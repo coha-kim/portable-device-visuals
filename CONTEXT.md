@@ -4,6 +4,10 @@ Updated: 2026-10-07
 
 ## Project and scope
 
+Repository: https://github.com/coha-kim/portable-device-visuals
+
+HTTPS preview: https://coha-kim.github.io/portable-device-visuals/ (GitHub Pages, main branch / root).
+
 Independent project at ~/portable-device-visuals, with a separate public GitHub repository named portable-device-visuals. Do not modify ambient-device-visuals or capstone-poc as part of this POC.
 
 User requested mobile visuals, a hold button and shake interaction. The reference is a round recessed physical-looking button; implement bottom-left with no visible icon or text. It retains an accessible label. Full viewport, one owner's colour #2A9284, lighter gradient centres, ongoing jellyfish/lava-lamp movement and merging.
@@ -27,6 +31,8 @@ Eight smooth gradient discs breathe gently and drift on independent slow paths. 
 Ambient device shows one colour/population for each user. Portable device belongs to one owner and eventually uses a physical button. Holding/shaking creates intensity and period; these will be sent to ambient-device-visuals. Intensity will control that owner's population attraction; period sets how long attraction returns to baseline. Portable opacity will also slowly return to normal over a period-dependent duration. Direction and numeric mapping to ambient attraction, recovery curve, networking transport and hardware sensor calibration remain undecided.
 
 ## Validation
+
+All seven interaction tests passed. Chrome preview checked at 390 x 844 with no console errors; button appearance and full-viewport layout inspected.
 
 Node tests cover hold gating, harder-shake response, active duration, persistent release result, stale sensor data, opacity/background bounds, frame-rate independence and gravity fallback. Real phone permission flow, shake sensitivity, Safari rendering and physical hardware require device validation.
 

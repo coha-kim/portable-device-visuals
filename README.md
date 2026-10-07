@@ -4,6 +4,8 @@ A mobile POC: one owner's teal (#2A9284) gradient metaballs, a blank recessed co
 
 ## Use
 
+[Open on your phone](https://coha-kim.github.io/portable-device-visuals/).
+
 Open the HTTPS site on a phone, tap **Enable motion**, and grant motion access. Hold the bottom-left button while shaking:
 
 - Harder shaking accumulates **intensity** faster and lowers opacity, down to 12%.
