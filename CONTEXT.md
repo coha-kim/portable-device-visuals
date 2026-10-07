@@ -24,7 +24,7 @@ User requested mobile visuals, a hold button and shake interaction. The referenc
 
 ## Rendering
 
-Eight smooth gradient discs breathe gently and drift on independent slow paths. Native SVG Gaussian blur and alpha matrix (gain 16, bias -6) produce reversible fused contours like Orbmerge. Group opacity is applied AFTER the goo filter so transparency does not alter the threshold or shrink the blobs. Native SVG was chosen for phone compatibility rather than CanvasRenderingContext2D.filter. No external assets/libraries or runtime network calls.
+Eight smooth gradient blobs breathe and drift on the same independent slow paths. The user reported severe phone lag and residual traces with the original SVG filter. Rendering now uses a reusable half-resolution Canvas 2D scalar field capped near 90,000 pixels, with compact-support fields accumulated only inside each blob's bounds. Full opaque background and blob pixels are written every frame; no blur, SVG filter, or retained transparent frame. The visible canvas is capped to CSS resolution rather than device pixel ratio. Opacity blends the finished field shape into the background. Background CSS/theme updates occur only when the colour changes. Motion, hold and shake mappings are unchanged. No external dependencies.
 
 ## Overall intended user flow (future)
 
@@ -32,7 +32,7 @@ Ambient device shows one colour/population for each user. Portable device belong
 
 ## Validation
 
-All seven interaction tests passed. Chrome preview checked at 390 x 844 with no console errors; button appearance and full-viewport layout inspected.
+All ten tests pass, including new pixel-level checks for clearing previous positions, fading without changing geometry, and fusion across a gap. Updated Canvas preview checked in Chrome at 390 x 844 without console errors. At 195 x 422 internal resolution, a desktop Node benchmark measured about 0.31 ms median / 0.32 ms p95 for pixel calculation only (not phone frame time or total rendering cost). Actual phone improvement awaits user verification.
 
 Node tests cover hold gating, harder-shake response, active duration, persistent release result, stale sensor data, opacity/background bounds, frame-rate independence and gravity fallback. Real phone permission flow, shake sensitivity, Safari rendering and physical hardware require device validation.
 

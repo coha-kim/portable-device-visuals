@@ -1,6 +1,6 @@
 # Portable Device Visuals
 
-A mobile POC: one owner's teal (#2A9284) gradient metaballs, a blank recessed corner button, and hold-to-shake interaction. Native SVG renders the same blur/alpha-threshold style of fusion as Orbmerge, without a canvas-filter dependency or external libraries.
+A mobile POC: one owner's teal (#2A9284) gradient metaballs, a blank recessed corner button, and hold-to-shake interaction. A compact Canvas 2D scalar field renders smooth fused shapes without SVG filters, blur passes, or external libraries. Every frame fully replaces the background to prevent trails.
 
 ## Use
 

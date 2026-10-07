@@ -1,9 +1,9 @@
 import { Interaction, MotionReader } from './interaction.mjs';
+import { MetaballRenderer } from './renderer.mjs';
 const interaction = new Interaction();
 const reader = new MotionReader();
 const scene = document.querySelector('#scene');
-const layer = document.querySelector('#blobs');
-const fade = document.querySelector('#fade');
+const renderer = new MetaballRenderer(scene);
 const hold = document.querySelector('#hold');
 const welcome = document.querySelector('#welcome');
 const status = document.querySelector('#status');
@@ -14,17 +14,16 @@ const theme = document.querySelector('meta[name="theme-color"]');
 let w = innerWidth, h = innerHeight, radius = 34;
 let pointer = null, keyboard = false, listening = false, sensorSeen = false, watchdog;
 let last = performance.now(), time = 0;
+let lastBackground = '';
 // Independent slow paths and gentle breathing yield continuous lava-lamp motion.
-// Each full-opacity gradient disc is blurred and thresholded as in Orbmerge.
+// The renderer merges a small scalar field; motion is unchanged.
 const blobs = Array.from({ length: 8 }, (_, i) => {
-  const node = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  layer.append(node);
-  return { node, x: .5 + .28 * Math.sin(i * 2.4), y: .15 + .7 * (i / 7), seed: Math.random() * 100, phase: i * 1.7 };
+  return { radius: 34, x: .5 + .28 * Math.sin(i * 2.4), y: .15 + .7 * (i / 7), seed: Math.random() * 100, phase: i * 1.7 };
 });
 function resize() {
   w = document.documentElement.clientWidth; h = document.documentElement.clientHeight;
   radius = Math.max(22, Math.min(52, Math.min(w, h) * .085));
-  scene.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  renderer.resize(w, h);
 }
 addEventListener('resize', resize); resize();
 function setHeld(value) {
@@ -89,9 +88,12 @@ function frame(now) {
   if (!document.hidden) {
     time += dt;
     interaction.step(dt, now);
-    const rgb = `rgb(${interaction.background.join(',')})`;
-    document.documentElement.style.setProperty('--paper', rgb); theme.content = rgb;
-    fade.setAttribute('opacity', interaction.opacity.toFixed(4));
+    const background = interaction.background;
+    const rgb = `rgb(${background.join(',')})`;
+    if (rgb !== lastBackground) {
+      document.documentElement.style.setProperty('--paper', rgb);
+      theme.content = rgb; lastBackground = rgb;
+    }
     for (const b of blobs) {
       const pulse = 1 + .055 * Math.sin(time * .7 + b.phase);
       const marginX = Math.min(.3, (radius * 1.5) / w), marginY = Math.min(.3, (radius * 1.5) / h);
@@ -101,8 +103,9 @@ function frame(now) {
       const steerY = b.y < marginY ? (marginY - b.y) * 12 : b.y > 1-marginY ? (1-marginY-b.y) * 12 : 0;
       b.x = Math.max(marginX*.7, Math.min(1-marginX*.7, b.x + (vx + steerX) * dt * 13 / w));
       b.y = Math.max(marginY*.7, Math.min(1-marginY*.7, b.y + (vy + steerY) * dt * 16 / h));
-      b.node.setAttribute('cx', b.x * w); b.node.setAttribute('cy', b.y * h); b.node.setAttribute('r', radius * pulse);
+      b.radius = radius * pulse;
     }
+    renderer.draw(blobs, interaction.opacity, background);
   }
   requestAnimationFrame(frame);
 }

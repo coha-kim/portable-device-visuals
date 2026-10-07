@@ -10,20 +10,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <svg id="scene" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <radialGradient id="teal">
-        <stop offset="0" stop-color="#B7DAD5"/>
-        <stop offset="1" stop-color="#2A9284"/>
-      </radialGradient>
-      <filter id="goo" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
-        <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 16 -6"/>
-      </filter>
-    </defs>
-    <!-- Fade the finished shape, after thresholding: fading before goo shrinks it. -->
-    <g id="fade"><g id="blobs" filter="url(#goo)" fill="url(#teal)"></g></g>
-  </svg>
+  <canvas id="scene" aria-hidden="true"></canvas>
   <button id="hold" type="button" aria-label="Hold while shaking" aria-pressed="false" aria-describedby="hint"></button>
   <p id="hint">Hold the corner button and shake.</p>
   <section id="welcome" aria-label="Motion setup">
@@ -37,6 +24,6 @@
     </div>
   </section>
   <button id="retry" type="button" hidden>Enable motion</button>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=canvas-2"></script>
 </body>
 </html>
