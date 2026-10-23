@@ -3,27 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#ECEADB">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#594F47">
   <title>Portable Device Visuals</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?blobs">
 </head>
 <body>
-  <canvas id="scene" aria-hidden="true"></canvas>
-  <button id="hold" type="button" aria-label="Hold while shaking" aria-pressed="false" aria-describedby="hint"></button>
-  <p id="hint">Hold the corner button and shake.</p>
-  <section id="welcome" aria-label="Motion setup">
-    <div class="card">
-      <p class="eyebrow">PORTABLE DEVICE</p>
-      <h1>A little movement,<br>a softer colour.</h1>
-      <p>Hold the corner button while you shake. Shake harder to soften the blobs, and longer to change the background. Release to keep the result.</p>
-      <button id="enable" type="button">Enable motion</button>
-      <button id="view" type="button">Just view the visuals</button>
-      <p id="status" role="status" aria-live="polite"></p>
+  <main id="prototype">
+    <header class="display-caption"><h1>Palm device</h1><p>2.1″ round display · 480 × 480 pixels</p></header>
+    <div id="display" aria-label="Round display preview, 480 by 480 pixels"><canvas id="scene" width="480" height="480" aria-hidden="true"></canvas></div>
+    <div id="prototype-controls">
+      <button id="hold" type="button" aria-label="Hold to activate" aria-pressed="false" aria-describedby="hint"></button>
+      <p id="hint">One lava-lamp blob, always drifting.<br>Hold and shake: harder shakes split it into smaller blobs that only merge when they collide.</p>
     </div>
-  </section>
-  <button id="retry" type="button" hidden>Enable motion</button>
-  <script type="module" src="app.js?v=canvas-2"></script>
+    <p id="metrics" aria-live="off">Baseline · 1 blob · Speed 100% · Dull 0% · Repulsion 0%</p>
+    <section id="laptop-test" aria-label="Laptop shake test">
+      <div class="test-row"><button id="simulate" type="button" aria-pressed="false">Hold + shake test</button></div><div class="test-row"><button id="motion-setup" type="button">Use phone motion</button></div>
+      <label for="shake-strength">Test strength <input id="shake-strength" type="range" min="0.1" max="1" step="0.05" value="0.65"></label>
+      <p id="motion-status">Hold the round button, or use the shake test. Release to let the blobs slowly gather back into one.</p>
+    </section>
+  </main>
+  <section id="welcome" aria-label="Motion setup" hidden><div class="card">
+    <p class="eyebrow">PALM DEVICE</p><h1>Hold, then shake.</h1>
+    <p>Hold while shaking. Harder shakes split the blob into smaller pieces that slow down and dull in colour. Release to let them gradually merge again.</p>
+    <button id="enable" type="button">Enable motion</button><button id="view" type="button">Back to preview</button><p id="status" role="status" aria-live="polite"></p>
+  </div></section>
+  <script type="module" src="app.js?blobs"></script>
 </body>
 </html>

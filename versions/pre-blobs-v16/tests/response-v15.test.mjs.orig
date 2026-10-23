@@ -1,0 +1,81 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {ParticlePhysics,PARTICLE_COUNT,WALL_RADIUS} from '../physics-v15.mjs';
+import {PalmInteraction} from '../interaction-v15.mjs';
+import {once} from 'node:events';
+import {createHarveyServer} from '../connection-v1/server-v1.mjs';
+const seeded=()=>{let s=123;return()=>((s=(Math.imul(s,1664525)+1013904223)>>>0)/4294967296);};
+function meanNearest(particles){return particles.reduce((sum,a)=>sum+Math.min(...particles.filter(b=>b!==a).map(b=>Math.hypot(a.x-b.x,a.y-b.y))),0)/particles.length;}
+test('particle interaction immediately raises repulsion, reduces speed and fades opacity',()=>{
+ const m=new PalmInteraction();assert.equal(m.opacity,1);assert.equal(m.speedScale,1);assert.equal(m.repulsion,0);
+ m.hold(true,0);assert.ok(m.repulsion>0&&m.speedScale<1&&m.opacity<1);
+ m.sampleVector(16,0,0,8);m.step(1/120,8);assert.equal(m.intensity,1);assert.ok(m.repulsion>=.7);assert.ok(m.speedScale<.5);
+ m.step(.05,20000);assert.equal(m.repulsion,1);assert.ok(Math.abs(m.opacity-.18)<1e-8);assert.ok(Math.abs(m.speedScale-.22)<1e-8);
+ m.hold(false,22000);assert.equal(m.state.recoverySeconds,110);const speed=m.speedScale,opacity=m.opacity,repulsion=m.repulsion;
+ m.step(.05,23000);assert.ok(m.repulsion>0&&m.repulsion<repulsion);assert.ok(m.speedScale>speed&&m.opacity>opacity);
+ m.hold(true,23000);assert.ok(m.repulsion>.9,'Re-holding preserves the remaining state');m.hold(false,23010);
+ m.step(.05,53010);assert.equal(m.repulsion,0);assert.equal(m.speedScale,1);assert.equal(m.opacity,1);
+});
+test('strong repulsion separates neighbours without exceeding the reduced speed ceiling',()=>{
+ const outcomes=[];
+ for(const repulsion of [0,1]){
+  const p=new ParticlePhysics({count:2,random:seeded()});
+  Object.assign(p.particles[0],{x:230,y:240,vx:0,vy:0,heading:Math.PI/2});Object.assign(p.particles[1],{x:250,y:240,vx:0,vy:0,heading:Math.PI/2});
+  for(let f=0;f<120;f++)p.advance(1/120,{repulsion});
+  outcomes.push(Math.hypot(p.particles[0].x-p.particles[1].x,p.particles[0].y-p.particles[1].y));
+  for(const a of p.particles)assert.ok(Math.hypot(a.vx,a.vy)<=a.baseSpeed*(1-.78*repulsion)+1e-8);
+ }
+ assert.ok(outcomes[1]>outcomes[0]+8,JSON.stringify(outcomes));
+});
+test('fixed 400-particle population remains slower and more separated under interaction',()=>{
+ const results=[];
+ for(const repulsion of [0,1]){
+  const p=new ParticlePhysics({random:seeded()});const ids=p.particles.map(p=>p.id);let speed=0;
+  for(let f=0;f<120*10;f++){p.advance(1/120,{repulsion,held:repulsion>0});if(f>120*5)speed+=p.meanSpeed/(120*5);}
+  assert.equal(p.particles.length,400);assert.ok(p.particles.every(a=>a.radius>=1.4&&a.radius<=2.15));assert.deepEqual(p.particles.map(p=>p.id),ids);results.push({speed,spacing:meanNearest(p.particles)});
+ }
+ assert.ok(results[1].speed<results[0].speed*.5);assert.ok(results[1].spacing>results[0].spacing*1.3,JSON.stringify(results));
+});
+test('circular wall reflects outward velocity and accounts for particle radius',()=>{
+ const p=new ParticlePhysics({count:1,random:seeded()}),a=p.particles[0];Object.assign(a,{x:240+WALL_RADIUS-a.radius-.01,y:240,vx:25,vy:0,heading:0});
+ p.advance(1/120);assert.ok(a.vx<0);assert.ok(Math.hypot(a.x-240,a.y-240)+a.radius<=WALL_RADIUS+1e-8);assert.ok(p.stats.wallCollisions>0);
+});
+test('particle contacts remain separate and exactly coincident points resolve finitely',()=>{
+ const p=new ParticlePhysics({count:2,random:seeded()});for(const a of p.particles)Object.assign(a,{x:240,y:240,vx:0,vy:0});
+ p.advance(1/120,{repulsion:1});const [a,b]=p.particles;assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=a.radius+b.radius-1e-6);
+ for(const a of p.particles)assert.ok([a.x,a.y,a.vx,a.vy].every(Number.isFinite));
+});
+test('unheld sensor data cannot add force or gravity',()=>{
+ const a=new ParticlePhysics({random:seeded()}),b=new ParticlePhysics({random:seeded()});
+ for(let f=0;f<240;f++){a.advance(1/120);b.advance(1/120,{}, {x:35,y:-35,omega:4,tiltY:9.81});}
+ assert.deepEqual(a.particles,b.particles);
+});
+test('strong held shakes cannot defeat the slower interaction speed',()=>{
+ const p=new ParticlePhysics({random:seeded()});
+ for(let f=0;f<120*3;f++){
+  p.advance(1/120,{held:true,repulsion:1},{x:Math.sin(f)*35,y:Math.cos(f)*35,omega:4});
+  for(const a of p.particles)assert.ok(Math.hypot(a.vx,a.vy)<=a.baseSpeed*.22+1e-8);
+ }
+});
+test('six minutes of idle, strong shaking and recovery keep 400 finite contained particles',()=>{
+ const p=new ParticlePhysics({random:seeded()}),ids=p.particles.map(p=>p.id);let previous;const travel=Array(PARTICLE_COUNT).fill(0);
+ for(let f=0;f<360*120;f++){
+  const t=f/120,phase=t%24,repulsion=phase<8?0:phase<16?1:1-(phase-16)/8;
+  p.advance(1/120,{repulsion,held:phase>=8&&phase<16}, {x:Math.sin(t*12)*25,y:Math.cos(t*9)*22,omega:Math.sin(t)*3});
+  if(f===330*120)previous=p.particles.map(p=>({x:p.x,y:p.y}));
+  if(f>330*120)p.particles.forEach((a,i)=>{travel[i]+=Math.hypot(a.x-previous[i].x,a.y-previous[i].y);previous[i]={x:a.x,y:a.y};});
+  if(f%120)continue;
+  for(const a of p.particles){assert.ok([a.x,a.y,a.vx,a.vy].every(Number.isFinite));assert.ok(Math.hypot(a.x-240,a.y-240)+a.radius<=WALL_RADIUS+1e-7);}
+ }
+ assert.equal(p.particles.length,PARTICLE_COUNT);assert.deepEqual(p.particles.map(p=>p.id),ids);assert.ok(travel.every(d=>d>25));assert.ok(p.stats.wallCollisions>0);
+});
+test('fixed-step particles agree at 30/60/120 drawing fps',()=>{
+ let reference;
+ for(const fps of [30,60,120]){const p=new ParticlePhysics({random:seeded()});for(let i=0;i<fps*3;i++)p.advance(1/fps,{held:true,repulsion:.7},{x:2,y:-1});
+  const points=p.particles.map(a=>({x:a.x,y:a.y}));if(!reference)reference=points;else points.forEach((a,i)=>assert.ok(Math.hypot(a.x-reference[i].x,a.y-reference[i].y)<1e-7));}
+});
+test('paired preview serves the particle entry points with held speed and repulsion mapping',async t=>{
+ const {server}=createHarveyServer();server.listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(resolve=>server.close(resolve)));
+ for(const path of ['physics-v15.mjs','interaction-v15.mjs','renderer.mjs'])assert.equal((await fetch(`http://127.0.0.1:${server.address().port}/portable/${path}`)).status,200);
+ const app=await(await fetch(`http://127.0.0.1:${server.address().port}/portable/app.js`)).text();assert.match(app,/ParticlePhysics/);assert.match(app,/ParticleRenderer/);assert.match(app,/renderer.draw\(physics.particles/);assert.match(app,/speedScale:interaction.speedScale/);assert.doesNotMatch(app,/setGrab|releaseGrab|deformation/);
+});

@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Interaction } from '../interaction-v3.mjs';
+import { attractionFor } from '../harvey-link-v1.mjs';
+test('holding without any motion reaches bounce-only attraction, then recovers over 5x the hold', () => {
+  const m = new Interaction(); m.hold(true, 1000); m.step(.016, 4500);
+  assert.ok(Math.abs(m.intensity - .56) < 1e-12); assert.ok(attractionFor(m.intensity) < .6);
+  m.hold(false, 4500); assert.equal(m.state.recoverySeconds, 17.5);
+  m.step(.016, 22000); assert.equal(m.intensity, 0); assert.deepEqual(m.background, [236, 234, 219]);
+});
+test('release includes the final frame fraction, and re-holding preserves remaining intensity', () => {
+  const m = new Interaction(); m.hold(true, 1000); m.step(.016, 1500); m.hold(false, 1700);
+  assert.ok(Math.abs(m.intensity - .112) < 1e-12); assert.equal(m.state.recoverySeconds, 3.5);
+  m.step(.016, 3450); const remaining = m.intensity; m.hold(true, 3450); assert.equal(m.intensity, remaining);
+  m.hold(false, 4450); assert.ok(Math.abs(m.intensity - remaining - .16) < 1e-12); assert.equal(m.state.recoverySeconds, 5);
+});
+test('hold input is frame-rate independent, caps intensity, and ignores motion strength', () => {
+  const models = [new Interaction(), new Interaction()];
+  models.forEach((m, i) => { m.hold(true, 0); const hz = i ? 120 : 30; for (let n = 1; n <= hz; n++) { m.sample(i ? 100 : 0, n * 1000 / hz); m.step(1 / hz, n * 1000 / hz); } });
+  assert.equal(models[0].intensity, models[1].intensity); assert.equal(models[0].intensity, .16);
+  models[0].hold(false, 10000); assert.equal(models[0].intensity, 1); assert.equal(models[0].state.recoverySeconds, 50);
+});
+test('explicit shake mode still requires fresh motion while held', () => {
+  const m = new Interaction({ inputMode: 'shake' }); m.hold(true, 1000); m.step(.05, 2000); assert.equal(m.intensity, 0);
+  m.sample(16, 2100); m.step(.05, 2100); assert.ok(m.intensity > 0); const before = m.intensity;
+  m.step(.05, 3000); assert.equal(m.intensity, before); m.hold(false, 3000); assert.equal(m.state.recoverySeconds, 10);
+});

@@ -1,41 +1,15 @@
-# Portable Device Visuals — project context
+# Portable Device Visuals — current project context
 
-Updated: 2026-10-07
+Independent local project: /Users/seoha.kim/portable-device-visuals. Repository: https://github.com/coha-kim/portable-device-visuals. Keep ambient-device-visuals and capstone-poc separate.
 
-## Project and scope
+The user wants the current files updated directly. Do not make a new numbered version unless explicitly asked. Existing old versions remain inactive history. The 400-particle model (physics-v15.mjs) is inactive; its active-file copies before the blob change are in versions/pre-blobs-v16/.
 
-Repository: https://github.com/coha-kim/portable-device-visuals
+Current model (2026-10-23) returns to the v9 lava-lamp metaball look on the native 480 × 480 round display (Waveshare ESP32-S3-Touch-LCD-2.1B). Background #594F47 (fixed during interaction; confirmed by the user 2026-10-23). Wax colour: rim #97D3B2 to a lighter core #CFE0BD by field depth; dulls fully to #729B82 with energy. Colour dulling replaces the earlier opacity fade.
 
-HTTPS preview: https://coha-kim.github.io/portable-device-visuals/ (GitHub Pages, main branch / root).
+A fixed pool of 14 sub-blobs (radii 21–38 px) is held together by short-range cohesion, so at rest it reads as one slowly drifting, morphing blob. While held, live shake strength sets repulsion: each blob has a size-based grip (bigger holds on longer), so gentle shaking keeps one blob, medium shaking sheds small pieces from a core, and hard shaking breaks it into separate blobs. Split pieces wander independently, bounce off the circular wall and fuse again only when they collide (soft, partly inelastic contact). Energy (shake strength + held time) slows movement and dulls the colour. After release, the shared protocol decays repulsion and energy over 5× hold time (30–120 s), so the pieces gradually gather back into one blob. The WebSocket protocol is unchanged.
 
-Independent project at ~/portable-device-visuals, with a separate public GitHub repository named portable-device-visuals. Do not modify ambient-device-visuals or capstone-poc as part of this POC.
+Active files: app.js; blobs.mjs (blob physics, fixed 60 Hz step); interaction-v15.mjs (repulsion/energy/dullness mapping, updated in place); renderer.mjs (compact-support metaball field at half resolution 240 × 240, upscaled); index.html/style.css; connection-v1/server-v1.mjs. The local preview is http://127.0.0.1:8038/ (.claude/launch.json). Tests: tests/blobs.test.mjs, tests/renderer.test.mjs.
 
-User requested mobile visuals, a hold button and shake interaction. The reference is a round recessed physical-looking button; implement bottom-left with no visible icon or text. It retains an accessible label. Full viewport, one owner's colour #2A9284, lighter gradient centres, ongoing jellyfish/lava-lamp movement and merging.
+Reference repos: huynonstop/metaball-canvas and mx0c/metaball-fluid-simulation (metaball field + bouncing balls). Concepts only; no code copied. Visual reference: lava lamp.
 
-## Implemented interaction
-
-- A real Enable motion button requests iOS permission in its user gesture; HTTPS is required.
-- Hold captures the pointer, so drifting outside the button while shaking does not release it. Pointer up/cancel/lost capture, focus loss and hidden page release it safely.
-- Only held, fresh motion readings above threshold change appearance.
-- Intensity is accumulated normalized strength: harder shake reduces opacity faster. Opacity floor 0.12, rate 0.16/s at full shake; thresholds are provisional POC tuning.
-- Period measures active shaking seconds, capped at 20 for this POC. It drives #ECEADB → #E2DDB1 independently of shake strength. Exact requested colours preserved; the endpoint is actually darker/more yellow, despite the original verbal description of lighter.
-- Release preserves the result. Reload resets it. Movement runs independently and never speeds up with shaking.
-- No automatic recovery or ambient networking in this iteration.
-
-## Rendering
-
-Eight smooth gradient blobs breathe and drift on the same independent slow paths. The user reported severe phone lag and residual traces with the original SVG filter. Rendering now uses a reusable half-resolution Canvas 2D scalar field capped near 90,000 pixels, with compact-support fields accumulated only inside each blob's bounds. Full opaque background and blob pixels are written every frame; no blur, SVG filter, or retained transparent frame. The visible canvas is capped to CSS resolution rather than device pixel ratio. Opacity blends the finished field shape into the background. Background CSS/theme updates occur only when the colour changes. Motion, hold and shake mappings are unchanged. No external dependencies.
-
-## Overall intended user flow (future)
-
-Ambient device shows one colour/population for each user. Portable device belongs to one owner and eventually uses a physical button. Holding/shaking creates intensity and period; these will be sent to ambient-device-visuals. Intensity will control that owner's population attraction; period sets how long attraction returns to baseline. Portable opacity will also slowly return to normal over a period-dependent duration. Direction and numeric mapping to ambient attraction, recovery curve, networking transport and hardware sensor calibration remain undecided.
-
-## Validation
-
-All ten tests pass, including new pixel-level checks for clearing previous positions, fading without changing geometry, and fusion across a gap. Updated Canvas preview checked in Chrome at 390 x 844 without console errors. At 195 x 422 internal resolution, a desktop Node benchmark measured about 0.31 ms median / 0.32 ms p95 for pixel calculation only (not phone frame time or total rendering cost). Actual phone improvement awaits user verification.
-
-Node tests cover hold gating, harder-shake response, active duration, persistent release result, stale sensor data, opacity/background bounds, frame-rate independence and gravity fallback. Real phone permission flow, shake sensitivity, Safari rendering and physical hardware require device validation.
-
-## Working preferences
-
-Ask about material ambiguity before changing scope. Keep this repository separate; keep this context file current. Do not repeat explanations already given in chat.
+Desktop Node cost: ~0.8 ms per 240 × 240 field frame, <0.01 ms physics. ESP32-S3 frame rate, IMU calibration and panel colours remain unverified.

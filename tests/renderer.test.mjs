@@ -1,23 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { paintPixels } from '../renderer.mjs';
-const width=120, height=80, bg=[236,234,219];
-function make() {
-  const f=new Float32Array(width*height), l=new Float32Array(width*height), p=new Uint8ClampedArray(width*height*4);
-  return {f,l,p, draw(blobs,opacity=1){paintPixels(width,height,blobs,opacity,bg,f,l,p);}, pixel(x,y){return [...p.slice((y*width+x)*4,(y*width+x)*4+4)];}};
-}
-test('moving blobs completely removes previous-frame pixels',()=>{
-  const r=make(); r.draw([{x:25,y:40,r:12}]); assert.notDeepEqual(r.pixel(25,40),[...bg,255]);
-  r.draw([{x:90,y:40,r:12}]); assert.deepEqual(r.pixel(25,40),[...bg,255]);
-  r.draw([]); for(let i=0;i<width*height;i++) assert.deepEqual([...r.p.slice(i*4,i*4+4)],[...bg,255]);
+import {paintPixels,palette,BACKGROUND,RIM,CORE,DULL} from '../renderer.mjs';
+const W=120;
+function paint(blobs,dullness=0){const field=new Float32Array(W*W),px=new Uint8ClampedArray(W*W*4);paintPixels(W,W,blobs,dullness,field,px);return px;}
+const at=(px,x,y)=>Array.from(px.slice((y*W+x)*4,(y*W+x)*4+3));
+test('supplied palette: #594F47 background, #97D3B2 rim to #CFE0BD core, dulling to #729B82',()=>{
+ assert.deepEqual(BACKGROUND,[89,79,71]);assert.deepEqual(RIM,[151,211,178]);assert.deepEqual(CORE,[207,224,189]);assert.deepEqual(DULL,[114,155,130]);
+ assert.deepEqual(palette(1),{rim:[...DULL],core:[...DULL]});assert.deepEqual(palette(0),{rim:[...RIM],core:[...CORE]});
 });
-test('opacity blends pixels without changing field geometry',()=>{
-  const r=make(), blobs=[{x:50,y:40,r:15}]; r.draw(blobs); const full=r.pixel(50,40), field=r.f.slice();
-  r.draw(blobs,.5); assert.deepEqual(r.f,field); const faded=r.pixel(50,40);
-  for(let i=0;i<3;i++) assert.ok(Math.abs(faded[i]-(full[i]+bg[i])/2)<=1);
-  r.draw(blobs,0); assert.deepEqual(r.pixel(50,40),[...bg,255]);
+test('fused body is lighter where thicker and fully dull at maximum energy',()=>{
+ const blobs=[{x:60,y:60,r:20},{x:75,y:60,r:20}];
+ const fresh=paint(blobs),dull=paint(blobs,1);
+ const rim=at(fresh,60,41),core=at(fresh,67,60);
+ assert.ok(core[0]>rim[0]&&core[1]>rim[1],JSON.stringify({rim,core}));
+ assert.deepEqual(at(dull,67,60),[...DULL]);
+ assert.deepEqual(at(fresh,2,2),[...BACKGROUND]);
 });
-test('nearby fields fuse across the gap while separated blobs do not',()=>{
-  const r=make(); r.draw([{x:45,y:40,r:13},{x:75,y:40,r:13}]); assert.notDeepEqual(r.pixel(60,40),[...bg,255]);
-  r.draw([{x:25,y:40,r:13},{x:95,y:40,r:13}]); assert.deepEqual(r.pixel(60,40),[...bg,255]);
+test('nearby blobs fuse across a gap; distant blobs stay separate',()=>{
+ const bridge=d=>at(paint([{x:60-d/2,y:60,r:15},{x:60+d/2,y:60,r:15}]),60,60);
+ assert.notDeepEqual(bridge(34),[...BACKGROUND],'fuses at a small gap');
+ assert.deepEqual(bridge(70),[...BACKGROUND],'separate when far apart');
+});
+test('every pixel is rewritten each frame, so moved blobs leave no trail',()=>{
+ const field=new Float32Array(W*W),px=new Uint8ClampedArray(W*W*4);
+ paintPixels(W,W,[{x:30,y:30,r:15}],0,field,px);paintPixels(W,W,[{x:90,y:90,r:15}],0,field,px);
+ assert.deepEqual(at(px,30,30),[...BACKGROUND]);assert.ok(px.every((v,i)=>i%4!==3||v===255));
 });

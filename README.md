@@ -1,24 +1,24 @@
 # Portable Device Visuals
 
-A mobile POC: one owner's teal (#2A9284) gradient metaballs, a blank recessed corner button, and hold-to-shake interaction. A compact Canvas 2D scalar field renders smooth fused shapes without SVG filters, blur passes, or external libraries. Every frame fully replaces the background to prevent trails.
+Harvey palm-device prototype on the native 480 × 480 round display: a lava-lamp metaball blob on #594F47. The wax shades from #97D3B2 at the rim to #CFE0BD in thicker areas and dulls toward #729B82 as energy rises.
 
-## Use
+## Interaction
 
-[Open on your phone](https://coha-kim.github.io/portable-device-visuals/).
+- **Idle:** 14 sub-blobs held together by cohesion read as one blob that drifts and slowly changes shape.
+- **Hold + shake:** shake strength sets repulsion. Gentle shaking keeps the blob together (only the wall can pull it apart), medium shaking sheds smaller pieces, and hard shaking splits it into separate blobs. These bounce off the circular edge and fuse only when they collide.
+- **Energy:** shake strength plus held time slows movement and dulls the colour.
+- **Release:** the shared recovery (5× hold time, 30–120 s) gradually lowers repulsion, so the pieces drift back together into one blob.
 
-Open the HTTPS site on a phone, tap **Enable motion**, and grant motion access. Hold the bottom-left button while shaking:
+On a laptop, hold **Hold + shake test** and set the strength slider. The metrics line shows how many visible blobs there are, plus speed, dullness and repulsion.
 
-- Harder shaking accumulates **intensity** faster and lowers opacity, down to 12%.
-- Active shaking time accumulates **period** and transitions the background from #ECEADB to #E2DDB1 over 20 seconds.
-- Holding still or shaking without holding changes neither value.
-- Release retains the resulting opacity/background while the blobs continue drifting. Reload resets the POC.
+## Run and connect
 
-The requested endpoint is more yellow and darker numerically than the starting colour; the exact supplied colours are preserved.
+`npm start` serves the standalone prototype. The current local preview runs at http://127.0.0.1:8038/. `npm run bridge` serves paired portable and ambient links at http://127.0.0.1:8787/. Phone motion needs HTTPS and an explicit **Enable motion** gesture. The ambient project and shared `harvey-link-v1.mjs` protocol are unchanged. GitHub Pages remains on its last deployed release until a deployment.
 
-Automatic recovery and transmission to the ambient display are future work. No data is sent anywhere by this app. Phone sensor feel must be tested on the actual device.
+Active entry points are `app.js`, `blobs.mjs` (blob physics), `interaction-v15.mjs` (repulsion/energy mapping) and `renderer.mjs` (half-resolution metaball field). Existing older files are inactive history. Update current files directly; create a separate version or backup only when the user explicitly requests it.
 
-## Development
+## Reference and checks
 
-`npm start` (or `python3 -m http.server 8000`) serves the files locally. Motion on a separate phone requires HTTPS; a plain LAN HTTP URL is for visual preview only. `npm test` runs interaction tests. No npm installation or build is necessary.
+Metaball references: [huynonstop/metaball-canvas](https://github.com/huynonstop/metaball-canvas) and [mx0c/metaball-fluid-simulation](https://github.com/mx0c/metaball-fluid-simulation). This implementation uses the v9 compact-support field (no sqrt per pixel) at 240 × 240, upscaled to 480. It costs about 0.8 ms per frame on a desktop. No reference code was copied.
 
-`interaction.mjs` contains thresholds and the intensity/period model. `app.js` handles sensors, holding, and animation. See [CONTEXT.md](CONTEXT.md) for scope and intended future integration.
+`npm test` checks that idle stays one blob, that the split is graded by shake strength, that collided blobs fuse, slowing and speed ceilings, re-merging after release, palette and dulling, trail-free repaint, frame-rate consistency, a six-minute run and paired delivery. This is a browser prototype; actual ESP32 firmware performance, IMU axes and physical panel colours require device testing.

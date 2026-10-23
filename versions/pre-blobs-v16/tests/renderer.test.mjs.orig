@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {ParticleRenderer,BACKGROUND,PARTICLE_COLOR} from '../renderer.mjs';
+function make(){const calls=[],ctx={globalAlpha:1,fillStyle:'',save(){calls.push(['save']);},restore(){calls.push(['restore']);},beginPath(){},arc(...args){calls.push(['arc',...args]);},clip(){calls.push(['clip']);},fillRect(...args){calls.push(['background',this.globalAlpha,this.fillStyle,...args]);},fill(){calls.push(['fill',this.globalAlpha,this.fillStyle]);}};
+ const canvas={getContext(){return ctx;}};return {renderer:new ParticleRenderer(canvas),canvas,ctx,calls};}
+test('particle renderer uses the exact native round canvas and supplied palette',()=>{
+ const r=make();r.renderer.draw([{x:200,y:220,radius:3.5,alpha:1}],1);
+ assert.equal(r.canvas.width,480);assert.equal(r.canvas.height,480);assert.equal(BACKGROUND,'#594F47');assert.equal(PARTICLE_COLOR,'#97D3B2');
+ assert.ok(r.calls.some(c=>c[0]==='arc'&&c[1]===240&&c[2]===240&&c[3]===240));assert.ok(r.calls.some(c=>c[0]==='fill'&&c[2]===PARTICLE_COLOR));
+});
+test('400 particles draw as independent small points without a shared field or shape deformation',()=>{
+ const r=make(),particles=Array.from({length:400},(_,id)=>({x:80+id*2,y:240,radius:3,alpha:1}));r.renderer.draw(particles,1);
+ assert.equal(r.calls.filter(c=>c[0]==='arc').length,801);assert.equal(r.calls.filter(c=>c[0]==='fill').length,800);
+});
+test('opacity changes the particles without moving them; every frame fully replaces the background',()=>{
+ const r=make(),particles=[{x:200,y:220,radius:3.5,alpha:.8}];r.renderer.draw(particles,1);const full=r.calls.filter(c=>c[0]==='arc');
+ r.calls.length=0;r.renderer.draw(particles,.2);assert.deepEqual(r.calls.filter(c=>c[0]==='arc'),full);
+ assert.deepEqual(r.calls[0],['background',1,BACKGROUND,0,0,480,480]);assert.ok(r.calls.some(c=>c[0]==='fill'&&Math.abs(c[1]-.16)<1e-8));assert.equal(r.ctx.globalAlpha,1);
+ r.calls.length=0;r.renderer.draw([],1);assert.deepEqual(r.calls[0],['background',1,BACKGROUND,0,0,480,480]);assert.equal(r.calls.filter(c=>c[0]==='fill').length,0);
+});
