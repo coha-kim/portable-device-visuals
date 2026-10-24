@@ -53,3 +53,7 @@ Optional environment variables: `PORT` (default 8787), `HOST` (default 127.0.0.1
 ## Current laptop input: v3
 
 The default paired portable page now uses hold-only input, without motion setup. Hold the corner button, or focus it and hold Space/Enter. Intensity grows at 0.16 per held second; release starts recovery lasting 5× the full hold duration, limited to 30–120 seconds. This replaces shake strength with elapsed hold time only for this temporary testing mode. Add `&input=shake` to the portable URL for the original motion-based input. The relay and v1 recovery protocol are unchanged. The controlled ambient population is now yellow (#FFD84D, index 1) for visibility.
+
+## Resync and Pi exhibition hooks
+
+Each snapshot state also carries `recoveryElapsedSeconds` and `recoveryRemainingSeconds` (0 unless recovering), so a portable waking from sleep can resume the natural decay without a synced clock. Ambient pages may send `{"version":1,"type":"stats","fps":…}` for monitoring; it never changes room state. `createHarveyServer({ onRequest })` lets a wrapper serve extra routes; the ambient project's `pi/exhibition-server.mjs` uses it for the Pi dashboard. The relay also serves `ambient/vendor/p5-2.3.1.min.js` for offline displays.

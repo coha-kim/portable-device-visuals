@@ -70,3 +70,19 @@ test('unresponsive held clients automatically release', async t => {
   await next(ws, m => m.type === 'snapshot'); ws.send(JSON.stringify({ version: 1, type: 'hold' })); await next(ws, m => m.states?.[1].phase === 'holding');
   clock = 200; assert.equal((await next(ws, m => m.states?.[1].phase === 'recovering')).states[1].recoverySeconds, 30);
 });
+test('a portable waking mid-recovery gets relative elapsed and remaining seconds; ambient stats stay out of room state', async t => {
+  let clock = 50000; const { server, wss } = createHarveyServer({ now: () => clock, tickMs: 10 });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); const base = `ws://127.0.0.1:${server.address().port}/socket?room=${roomA}&population=1`;
+  const clients = []; t.after(async () => { clients.forEach(ws => ws.terminate()); for (const c of wss.clients) c.terminate(); await new Promise(resolve => server.close(resolve)); });
+  async function connect(role) { const ws = new WebSocket(`${base}&role=${role}`); clients.push(ws); await next(ws, m => m.type === 'snapshot'); return ws; }
+  const portable = await connect('portable'), ambient = await connect('ambient');
+  portable.send(JSON.stringify({ version: 1, type: 'hold' })); await next(portable, m => m.states?.[1].phase === 'holding');
+  clock += 10000; portable.send(JSON.stringify({ version: 1, type: 'release' })); await next(portable, m => m.states?.[1].phase === 'recovering');
+  portable.close(); clock += 20000;
+  const woken = await next(await connect('portable'), m => m.states?.[1].phase === 'recovering');
+  assert.equal(woken.states[1].recoverySeconds, 50); assert.equal(woken.states[1].recoveryElapsedSeconds, 20); assert.equal(woken.states[1].recoveryRemainingSeconds, 30);
+  assert.equal(woken.states[0].recoveryRemainingSeconds, 0);
+  ambient.send(JSON.stringify({ version: 1, type: 'stats', fps: 59.8, width: 1024, height: 600 })); clock += 10;
+  await next(ambient, m => m.type === 'snapshot');
+  const reported = [...wss.clients].find(ws => ws.role === 'ambient'); assert.equal(reported.stats.fps, 59.8); assert.equal(reported.stats.width, 1024);
+});

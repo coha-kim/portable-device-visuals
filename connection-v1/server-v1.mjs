@@ -10,10 +10,11 @@ const portableRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ambientRoot = process.env.HARVEY_AMBIENT_DIR || resolve(portableRoot, '..', 'ambient-device-visuals');
 const allowed = {
   portable: new Set(['index.html', 'app.js', 'style.css', 'renderer.mjs', 'interaction.mjs', 'interaction-v1.mjs', 'interaction-v3.mjs', 'harvey-link-v1.mjs', 'interaction-v10.mjs', 'physics-v10.mjs', 'physics-v11.mjs', 'physics-v12.mjs', 'physics-v13.mjs', 'physics-v14.mjs', 'physics-v15.mjs', 'blobs.mjs', 'interaction-v15.mjs', 'interaction-v13.mjs', 'renderer-v13.mjs', 'interaction-v12.mjs', 'interaction-v11.mjs', 'renderer-v10.mjs', 'vendor/matter-0.20.0.min.js']),
-  ambient: new Set(['index.html', 'sketch.js', 'ambient-link-v1.mjs', 'harvey-link-v1.mjs'])
+  ambient: new Set(['index.html', 'sketch.js', 'ambient-link-v1.mjs', 'harvey-link-v1.mjs', 'vendor/p5-2.3.1.min.js'])
 };
 const mime = { html: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css' };
-export function createHarveyServer({ now = Date.now, holdTimeoutMs = 2500, tickMs = 100 } = {}) {
+// onRequest(req, res, url) may serve extra routes (e.g. a Pi dashboard) and return true when it handled one.
+export function createHarveyServer({ now = Date.now, holdTimeoutMs = 2500, tickMs = 100, onRequest } = {}) {
   const rooms = new Map();
   function roomFor(id) {
     if (!rooms.has(id)) {
@@ -32,6 +33,7 @@ export function createHarveyServer({ now = Date.now, holdTimeoutMs = 2500, tickM
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Harvey connection v1</title><style>body{font:18px system-ui;max-width:620px;margin:12vh auto;padding:24px;background:#eceadb;color:#15443c}a{display:block;padding:20px;margin:16px 0;border:1px solid;border-radius:12px;color:inherit}p{line-height:1.6}</style><h1>Harvey connection v1</h1><p>Open the portable in another window and the ambient on your display. Use these two links to keep them paired.</p><a href="/portable/?room=${room}&population=1">Open portable visuals</a><a href="/ambient/?room=${room}">Open ambient visuals</a><p>Hold the portable button to create more space. Recovery after release is ${RECOVERY_MULTIPLIER}× the hold duration, from ${RECOVERY_MIN_SECONDS} seconds to ${RECOVERY_MAX_SECONDS / 60} minutes.</p></html>`); return;
     }
+    if (onRequest && await onRequest(req, res, url)) return;
     if (url.pathname === '/health') { res.setHeader('Content-Type', 'application/json'); res.end('{"ok":true,"version":1}'); return; }
     const match = url.pathname.match(/^\/(portable|ambient)\/(.*)$/);
     const kind = match?.[1], name = match?.[2] || 'index.html';
@@ -57,9 +59,15 @@ export function createHarveyServer({ now = Date.now, holdTimeoutMs = 2500, tickM
     wss.handleUpgrade(req, socket, head, ws => { Object.assign(ws, { roomId, role, population }); wss.emit('connection', ws); });
   });
   const send = (ws, data) => { if (ws.readyState === 1 && ws.bufferedAmount < 65536) ws.send(JSON.stringify(data)); };
+  // Relative seconds let a device without a synced clock (e.g. a portable waking from sleep) resume mid-recovery.
+  function resync(s, time) {
+    const recoveryElapsedSeconds = s.phase === 'recovering' ? Math.max(0, (time - s.releasedAt) / 1000) : 0;
+    return { ...s, recoveryElapsedSeconds,
+      recoveryRemainingSeconds: s.phase === 'recovering' ? Math.max(0, s.recoverySeconds - recoveryElapsedSeconds) : 0 };
+  }
   function snapshot(ws) {
     const room = rooms.get(ws.roomId); if (!room) return;
-    const time = now(); send(ws, { version: 1, type: 'snapshot', serverNow: time, states: room.states.map(s => sampleState(s, time)) });
+    const time = now(); send(ws, { version: 1, type: 'snapshot', serverNow: time, states: room.states.map(s => resync(sampleState(s, time), time)) });
   }
   function release(ws) {
     const room = rooms.get(ws.roomId), p = ws.population;
@@ -67,11 +75,19 @@ export function createHarveyServer({ now = Date.now, holdTimeoutMs = 2500, tickM
     room.states[p] = endHold(room.states[p], now()); room.holders[p] = null;
   }
   wss.on('connection', ws => {
+    ws.connectedAt = ws.lastMessageAt = now();
     snapshot(ws); let windowStart = now(), count = 0;
     ws.on('message', bytes => {
       if (now() - windowStart >= 1000) { windowStart = now(); count = 0; }
       if (++count > 60) { ws.close(1008, 'Too many messages'); return; }
       let message; try { message = JSON.parse(bytes.toString()); } catch { send(ws, { type: 'error', code: 'invalid-message' }); return; }
+      ws.lastMessageAt = now();
+      // Ambient displays report render health for monitoring; it never changes room state.
+      if (message?.version === 1 && message.type === 'stats' && ws.role === 'ambient') {
+        const fps = Number(message.fps);
+        ws.stats = { fps: Number.isFinite(fps) ? fps : null, width: Number(message.width) || null, height: Number(message.height) || null, at: now() };
+        return;
+      }
       if (!message || message.version !== 1 || !['hold', 'intensity', 'release'].includes(message.type) || ws.role !== 'portable') {
         send(ws, { type: 'error', code: 'invalid-message' }); return;
       }
