@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvey Pocket iterations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<style>
+  :root { --ground: #F0EFEB; --ink: #111110; --muted: #55524D; --rule: #2B2B2A; --soft-rule: #D6D3CC; --nav: 380px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); font: 15px/1.45 "DM Sans", system-ui, sans-serif; }
+  button, select { font-family: inherit; }
+  body { display: grid; grid-template-columns: var(--nav) 1fr; height: 100vh; overflow: hidden; }
+  nav { border-right: 1px solid var(--soft-rule); overflow-y: auto; padding: 22px 24px 40px; }
+  nav header { padding-bottom: 28px; }
+  nav h1 { margin: 0 0 4px; font-weight: 500; font-size: 15px; }
+  nav header p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  nav section { border-top: 1px solid var(--rule); }
+  nav section:last-child { border-bottom: 1px solid var(--rule); }
+  nav h2 { margin: 0; }
+  nav h2 button { all: unset; box-sizing: border-box; display: flex; align-items: center; width: 100%; padding: 13px 0 14px; cursor: pointer; font-weight: 700; font-size: 26px; line-height: 1.12; letter-spacing: -.025em; }
+  nav h2 button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  nav h2 sup { font-weight: 400; font-size: 12px; letter-spacing: 0; margin-left: 3px; align-self: flex-start; padding-top: 2px; }
+  nav h2 .toggle { margin-left: auto; padding-left: 12px; position: relative; width: 30px; height: 18px; flex: none; }
+  nav h2 .toggle::before, nav h2 .toggle::after { content: ""; position: absolute; right: 0; top: 50%; width: 18px; height: 1px; background: var(--muted); }
+  nav h2 .toggle::after { transform: rotate(90deg); }
+  nav h2 button[aria-expanded="true"] .toggle::after { display: none; }
+  nav ol { list-style: none; margin: 0; padding: 2px 0 22px; }
+  nav ol[hidden] { display: none; }
+  nav a { display: flex; gap: 8px; padding: 3px 0; color: var(--muted); text-decoration: none; font-size: 16px; line-height: 1.3; }
+  nav a .num { flex: none; width: 34px; font-size: 13px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+  nav a:hover { color: var(--ink); }
+  nav a[aria-current="page"] { color: var(--ink); font-weight: 500; }
+  main { display: grid; grid-template-rows: auto 1fr; min-width: 0; height: 100vh; }
+  .bar { display: flex; align-items: baseline; gap: 16px; padding: 18px 24px 16px; border-bottom: 1px solid var(--soft-rule); flex-wrap: wrap; }
+  .bar h2 { margin: 0; font-weight: 700; font-size: 22px; line-height: 1.2; letter-spacing: -.02em; }
+  .bar .meta { font-size: 13px; color: var(--muted); }
+  .bar p { margin: 0; flex-basis: 100%; color: var(--ink); max-width: 860px; }
+  .bar .tools { margin-left: auto; display: flex; gap: 8px; }
+  .bar button, .bar a.open { font-size: 13px; line-height: 1; color: var(--ink); background: none; border: 1px solid var(--soft-rule); border-radius: 999px; padding: 6px 11px; cursor: pointer; text-decoration: none; }
+  .bar button:hover, .bar a.open:hover { border-color: var(--ink); }
+  iframe { border: 0; width: 100%; height: 100%; background: #fff; }
+  select { display: none; }
+  @media (max-width: 760px) {
+    body { display: block; height: auto; overflow: auto; }
+    nav { display: none; }
+    main { display: block; height: auto; }
+    iframe { height: 92vh; }
+    select { display: block; width: calc(100% - 32px); margin: 12px 16px 0; padding: 8px; font-size: 14px; background: #fff; border: 1px solid var(--soft-rule); border-radius: 8px; }
+    .bar { padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+<nav aria-label="Versions">
+  <header>
+    <h1>Harvey Pocket: iterations</h1>
+    <p>Every version of the portable device's blobs, oldest first. Each runs live.</p>
+  </header>
+  <div id="list"></div>
+</nav>
+<main>
+  <select id="picker" aria-label="Version"></select>
+  <div class="bar">
+    <h2 id="title"></h2>
+    <span class="meta" id="meta"></span>
+    <span class="tools">
+      <button id="prev" title="Previous version (←)">← Previous</button>
+      <button id="next" title="Next version (→)">Next →</button>
+      <a class="open" id="open" target="_blank" rel="noopener">Open alone ↗</a>
+    </span>
+    <p id="note"></p>
+  </div>
+  <iframe id="view" title="Version preview" allow="accelerometer; gyroscope; camera"></iframe>
+</main>
+<script>
+// Each version is the files as they were at that point, rebuilt from git and versions/ (browser prototype), or a
+// line-by-line browser port of that point's firmware (board). Nothing here changes how any version behaves.
+const GROUPS = [
+  { title: 'Early prototypes', items: [
+    ['web/git-5256be3/', 'Teal metaballs', '7 Oct', 'One owner\'s teal gradient metaballs drawn with SVG filters; hold the corner button and shake (or hold) to fade them.'],
+    ['web/git-d8d9fbc/', 'Canvas metaballs', '7 Oct', 'The same metaballs on a bounded canvas scalar field instead of SVG filters.'],
+    ['web/pre-palette-v6/', 'Hold to drain, shared recovery', '19 Oct', 'Hold-only input for laptop testing, linked to the ambient display; a hold of N seconds recovers over 5N, kept to 30–120 s.'],
+    ['web/pre-size-v7/', 'Turquoise palette', '20 Oct', 'The owner\'s population in turquoise #3CBDAF with lightened centres.'],
+    ['web/pre-round-display-v8/', 'Larger blobs', '20 Oct', 'Blob radius up by 25%.'],
+    ['web/pre-palette-v9/', 'Round 480 px display', '22 Oct', 'A fixed 480 × 480 canvas clipped to the Waveshare round screen; eight blobs steered inside the circle.'],
+    ['web/pre-collisions-v10/', 'Mint on brown', '22 Oct', 'Background #594F47 and blobs #97D3B2; holding and shaking fades them.'],
+    ['web/pre-fluid-motion-v11/', 'Collisions', '22 Oct', 'Matter.js bodies under the blobs: drag with the button held to simulate the container accelerating.'],
+    ['web/pre-gravity-v12/', 'Fluid motion', '22 Oct', 'Softer, fluid-like motion with momentum that carries on after the input stops.'],
+    ['web/pre-mesh-v13/', 'Gravity and turning', '22 Oct', 'Tilt and turning of the device as forces, with a hold-and-tilt test button.'],
+    ['web/pre-float-v14/', 'Soft mesh', '22 Oct', 'Each blob a deformable mesh; shake intensity sets how flexible the material is. Grab a blob edge to test it.'],
+    ['web/pre-response-v15/', 'Floating mesh', '22 Oct', 'Strained parts of the mesh keep their dent for a while and settle back after release.'],
+    ['web/pre-blobs-v16/', '400 particles', '22 Oct', '400 small suspended particles that stay separate and bounce off the round edge.'],
+    ['web/git-d798e07/', 'Lava-lamp metaballs, shake splits', '23 Oct', 'Back to the round-display lava-lamp metaballs; shaking harder splits them further.'],
+  ]},
+  { title: 'Soft bodies', items: [
+    ['web/pre-softbody/', 'Orbs', '25 Oct', 'A few orbs on the ambient device\'s wax field, always fully inside the glass.'],
+    ['web/pre-ambient-copy/', 'Soft-body jelly, slime', '28 Oct', 'Soft-body jelly blobs; slimier at rest, less so the longer you shake.'],
+    ['web/ambient-copy/', 'Ambient wax copy', '28 Oct', 'A copy of the ambient device\'s visuals with only the teal population, sliders for size, merging, speed and gravity; shaking reduces merging.'],
+    ['web/pre-lisyarus/', 'Smaller jelly, more of it', '29 Oct', 'Back to the soft-body jelly, with smaller blobs and a larger population.'],
+    ['web/pre-no-blur/', 'lisyarus soft bodies, colour slider', '30 Oct', 'Physics rebuilt after lisyarus\'s soft-body engine; a colour slider and a real-size preview.'],
+    ['web/pre-gravity/', 'Crisp edges', '31 Oct', 'The blur removed: each blob one crisp solid fill.'],
+    ['web/pre-outline/', 'Device gravity', '31 Oct', 'The device\'s own gravity is the only driving force: no movement unless it is tilted or moved.'],
+    ['web/pre-colour-wheel/', 'Press as force, elastic, orange', '3 Nov', 'Solid fills that hollow to outlines as you interact; a press is the origin of gravity and a push; elasticity 0–2; orange on grey; up to 200 blobs; longer recovery.'],
+    ['web/current/', 'Colour wheel, new baseline', '4 Nov', 'Long-press a blob for 3 s to open a colour wheel and shoot a new colour at it; slider defaults set to the tuned baseline.'],
+  ]},
+  { title: 'On the board', items: [
+    ['board/pre-baseline/', 'First flash', '4 Nov', 'The prototype\'s blobs on the ESP32 board: fifty 22 px blobs, tilt to move them, touch to hold and kick them away, shake while touching to drain.'],
+    ['board/pre-rebound-ease/', 'Board baseline', '4 Nov', 'The tuned baseline and drained feel ported to the board: 13 px blobs.'],
+    ['board/pre-board-colour/', 'Eased rebound', '4 Nov', 'Rebounds eased in over 0.06 s instead of one kick, so contacts don\'t stutter.'],
+    ['board/pre-button/', 'Colour wheel, 20 px blobs', '4 Nov', 'The long-press colour wheel on the board (not shown here), tilt fixed for the enclosure and capped at 0.3 g; a touch spares the blob under the finger.'],
+    ['board/pre-soft-look/', 'The button', '4 Nov', 'A physical button: holding it is the hold (Space here), three quick presses reset, ten minutes idle sleeps.'],
+    ['board/pre-radius-25/', 'Soft look', '5 Nov', 'Blobs soft-edged with a slight lightening, shaded at half resolution.'],
+    ['board/pre-three-blobs/', 'Bigger blobs, blue on dark', '5 Nov', 'Radius 25 and softer; the ambient display\'s background #2F302F and blue #3F7ABB.'],
+  ]},
+  { title: 'Three blobs', items: [
+    ['board/pre-splash/', 'Three big blobs', '5 Nov', 'Three soft blobs of radius 75 like a mint blob on dark.'],
+    ['board/pre-locoroco/', 'Splash', '5 Nov', 'Hard hits throw droplets off the sides of the contact; settled drops flow back together.'],
+    ['board/pre-wander/', 'LocoRoco vertex physics', '5 Nov', 'Splash removed; 32-point skins after LocoRoco, merging into one shared wax field, a slow drift at rest.'],
+    ['board/pre-own-forces/', 'Wander paths, low-battery spacing', '5 Nov', 'Each blob follows its own swinging path; with the battery low they keep 2 px apart and repel.'],
+    ['board/pre-full-deform/', 'Lower gravity', '5 Nov', 'Gravity 1800 → 1100 px/s², so blobs pull together less.'],
+    ['board/pre-smooth-skin/', 'Faster, full deformation', '5 Nov', 'The baseline runs 1.4× real time; the drained blobs keep their full deformation and bounce less.'],
+    ['board/pre-rings/', 'Smooth skin, #1C1C1C', '5 Nov', 'Bend and viscosity in the skin stop outlines tearing into streaks; background #1C1C1C.'],
+    ['board/pre-low-gravity/', 'Shake sloshing, sent ring', '5 Nov', 'Shaking with the button held sloshes the blobs; a white ring confirms a release reached the ambient display.'],
+    ['board/pre-redirect/', 'Merge limit', '7 Nov', 'Blobs stay merged at most 1.5 s, less after interacting, then are pushed apart.'],
+    ['board/pre-twist/', 'Parting as redirection', '7 Nov', 'Parting is a change of course rather than a push; baseline pace 1.6.'],
+    ['board/pre-tipping/', 'Twist dial', '7 Nov', 'Held, each sharp anticlockwise twist (like a rotary dial) takes one of five notches.'],
+    ['board/pre-squish/', 'Tipping', '7 Nov', 'Held, tipping the screen drains: faster the further it\'s tipped, any direction.'],
+    ['board/pre-melt/', 'Water balloons, sucked-out colour', '7 Nov', 'While held, blobs sag like stacked water balloons and the colour drains from the far side.'],
+    ['board/pre-egg/', 'Melting jelly', '7 Nov', 'Held, blobs melt like jelly in a container, merging with no limit.'],
+    ['board/egg-harsh-front/', 'Raw egg melt', '7 Nov', 'Fully melted wax slumps flat like a raw egg; stronger, duller drained colour.'],
+    ['board/pre-free-wander/', 'Softer colour front', '7 Nov', 'The edge between the full and drained colour eased, with no hard line.'],
+    ['drain/drain.html', 'Drain page (web)', '7 Nov', 'The tipping for a mouse or trackpad: press and drag to pinch a drain into the page.'],
+    ['board/free-wander-always-limit/', 'Free wander, wobble', '8 Nov', 'Each blob drifts on its own free path over the whole plate; the baseline wobbles a little and is softer.'],
+    ['board/current/', 'Merge limit only while tilted', '8 Nov', 'The 1.5 s merge limit only while someone is tilting the screen. What is on the board now.'],
+  ]},
+];
+const versions = []; GROUPS.forEach(g => g.items.forEach(([path, title, date, note]) => versions.push({ path, title, date, note, group: g.title })));
+const list = document.getElementById('list'), picker = document.getElementById('picker'), view = document.getElementById('view');
+let n = 0;
+const sections = [];
+GROUPS.forEach((g, gi) => {
+  const sec = document.createElement('section'), h = document.createElement('h2'), btn = document.createElement('button'), ol = document.createElement('ol');
+  ol.id = 'group-' + gi; btn.setAttribute('aria-controls', ol.id); btn.setAttribute('aria-expanded', 'false'); ol.hidden = true;
+  btn.innerHTML = `<span>${g.title}</span><sup>(+${g.items.length})</sup><span class="toggle" aria-hidden="true"></span>`;
+  btn.onclick = () => open(gi, btn.getAttribute('aria-expanded') !== 'true');
+  h.append(btn); sec.append(h, ol); list.append(sec); sections.push({ btn, ol, from: n + 1, to: n + g.items.length });
+  const og = document.createElement('optgroup'); og.label = g.title;
+  for (const [path, title, date] of g.items) {
+    n++;
+    const li = document.createElement('li'), a = document.createElement('a');
+    a.href = '#v' + n; a.dataset.v = n; a.title = date;
+    a.innerHTML = `<span class="num">v${n}</span><span>${title}</span>`;
+    li.append(a); ol.append(li);
+    const o = document.createElement('option'); o.value = n; o.textContent = `v${n} – ${title} (${date})`; og.append(o);
+  }
+  picker.append(og);
+});
+function open(gi, on) { const s = sections[gi]; s.btn.setAttribute('aria-expanded', String(on)); s.ol.hidden = !on; }
+function show() {
+  let k = Number((location.hash.match(/^#v(\d+)$/) || [])[1]) || versions.length;
+  k = Math.min(Math.max(k, 1), versions.length);
+  const v = versions[k - 1];
+  document.getElementById('title').textContent = `v${k} – ${v.title}`;
+  document.getElementById('meta').textContent = `${v.date} 2026 · ${v.group}`;
+  document.getElementById('note').textContent = v.note;
+  document.getElementById('open').href = v.path;
+  document.title = `v${k} – ${v.title} · Harvey Pocket iterations`;
+  if (view.getAttribute('src') !== v.path) view.src = v.path;
+  for (const a of list.querySelectorAll('a')) a.removeAttribute('aria-current');
+  sections.forEach((sec, gi) => { if (k >= sec.from && k <= sec.to) open(gi, true); });
+  const current = list.querySelector(`a[data-v="${k}"]`); current.setAttribute('aria-current', 'page'); current.scrollIntoView({ block: 'nearest' });
+  picker.value = k;
+  document.getElementById('prev').disabled = k === 1; document.getElementById('next').disabled = k === versions.length;
+  return k;
+}
+const go = d => { const k = show() + d; if (k >= 1 && k <= versions.length) location.hash = '#v' + k; };
+document.getElementById('prev').onclick = () => go(-1);
+document.getElementById('next').onclick = () => go(1);
+picker.onchange = () => { location.hash = '#v' + picker.value; };
+addEventListener('keydown', e => { if (e.target === document.body && !e.metaKey && !e.ctrlKey) { if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); } });
+addEventListener('hashchange', show);
+show();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+/* Plain page: browser-default controls on white; only the round 480 × 480 display is styled. */
+html, body { background: #fff; }
+/* --display-size: 480px by default; "Real size" sets it to 53.28 mm at the calibrated px per mm. */
+#display { width: var(--display-size, 480px); height: var(--display-size, 480px); border-radius: 50%; overflow: hidden; background: #594F47; }
+#scene { display: block; width: 100%; height: 100%; }
+/* Calibration card outline: an ID-1 bank card (85.60 × 53.98 mm) at the calibrated scale. */
+#calibration-card { width: var(--card-width); height: var(--card-height); border: 1px solid #000; border-radius: 3mm; box-sizing: border-box; }
+[hidden] { display: none !important; }
