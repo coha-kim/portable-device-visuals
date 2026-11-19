@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvey Pocket</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #0f0f0f; color: #9a9a9a; font: 13px/1.5 ui-monospace, "IBM Plex Mono", Menlo, monospace; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 16px; box-sizing: border-box; }
+  .device { display: flex; align-items: center; gap: 28px; }
+  .bezel { padding: 14px; border-radius: 50%; background: #050505; box-shadow: 0 0 0 1px #262626; }
+  #screen { display: block; width: min(480px, 78vw); aspect-ratio: 1; border-radius: 50%; touch-action: none; cursor: grab; }
+  #screen:active { cursor: grabbing; }
+  #button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid #333; background: #1d1d1d; touch-action: none; cursor: pointer; padding: 0; }
+  #button.down { background: #3a3a3a; transform: scale(.94); }
+  #button:focus-visible { outline: 2px solid #8ab4f8; outline-offset: 3px; }
+  p { margin: 0; text-align: center; max-width: 560px; }
+  #readout { color: #cfcfcf; }
+  @media (max-width: 600px) { .device { flex-direction: column; gap: 16px; } }
+</style>
+</head>
+<body>
+  <div class="device">
+    <div class="bezel"><canvas id="screen" width="480" height="480" aria-label="Harvey Pocket screen"></canvas></div>
+    <button id="button" aria-label="Pocket button (or hold Space)"></button>
+  </div>
+  <p id="readout">&nbsp;</p>
+  <p>Drag on the screen to tip it · hold Space or the button to signal · three quick presses reset</p>
+  <script type="module" src="board.mjs"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+html, body { background: #fff; }
+#display { width: 480px; height: 480px; border-radius: 50%; overflow: hidden; background: #594F47; }
+/* The ambient sketch draws a 600 × 600 lamp; the round display shows it at its native 480 × 480. */
+#display canvas { display: block; width: 480px !important; height: 480px !important; }
+[hidden] { display: none !important; }

@@ -1,68 +1,67 @@
-// v9 compact-support metaball field, updated in place for the split/merge blobs.
-// Field runs at half resolution (240 × 240 = 57,600 px) and is upscaled: ~4× cheaper than native,
-// the same budget an ESP32-S3 firmware port would use. One float buffer, no sqrt per pixel; every
-// output pixel is rewritten each frame, so nothing accumulates. Shading follows field depth, so
-// fused wax reads as one smooth body with a lighter, thicker core rather than separate cells.
-export const BACKGROUND=Object.freeze([89,79,71]);      // #594F47
-export const RIM=Object.freeze([151,211,178]);          // #97D3B2
-export const CORE=Object.freeze([207,224,189]);         // #CFE0BD
-export const DULL=Object.freeze([114,155,130]);         // #729B82
-// A lone blob crosses this threshold at its nominal radius: (1 - 1/4)^3.
-const THRESHOLD=.421875,FEATHER=.065,DEPTH=1.8;
-const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
-export function palette(dullness=0){
- const t=Math.max(0,Math.min(1,dullness));
- return {rim:mix(RIM,DULL,t),core:mix(CORE,DULL,t)};
+// Jelly soft-body drawing on the native 480 × 480 round canvas: each body is one solid colour (by
+// default orange #F47839 on a #CCCCCC background; the Colour slider changes the hue) with a crisp edge and no
+// highlight, gradient or blur, drawn straight onto the canvas at full resolution (the canvas's own
+// anti-aliasing only). At rest each body is solidly filled; as the user interacts it hollows into an
+// outline (see outlineWidth). The full frame is repainted, so nothing accumulates.
+export const BACKGROUND='#CCCCCC',FILL='#F47839';
+// Colour slider: the hue of the fill, at the saturation and lightness of the default fill, so every
+// choice is equally vivid against the background. The default hue gives exactly FILL.
+function hsl(hex){
+ const [r,g,b]=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255),max=Math.max(r,g,b),min=Math.min(r,g,b),l=(max+min)/2,d=max-min;
+ const s=d?d/(1-Math.abs(2*l-1)):0,h=!d?0:max===r?60*((g-b)/d+6)%360:max===g?60*((b-r)/d+2):60*((r-g)/d+4);
+ return {h,s,l};
 }
-export function paintPixels(width,height,blobs,dullness,field,pixels,background=BACKGROUND){
- field.fill(0);
- for(const b of blobs){
-  const r2=b.r*b.r,support=b.r*2;
-  const left=Math.max(0,Math.floor(b.x-support)),right=Math.min(width-1,Math.ceil(b.x+support));
-  const top=Math.max(0,Math.floor(b.y-support)),bottom=Math.min(height-1,Math.ceil(b.y+support));
-  for(let y=top;y<=bottom;y++){
-   const dy2=(y+.5-b.y)**2;
-   for(let x=left;x<=right;x++){
-    const d2=((x+.5-b.x)**2+dy2)/r2;
-    if(d2>=4)continue;
-    const u=1-d2*.25;
-    field[y*width+x]+=u*u*u;
-   }
-  }
- }
- const {rim,core}=palette(dullness),bg=background;
- const dr=core[0]-rim[0],dg=core[1]-rim[1],db=core[2]-rim[2];
- for(let i=0;i<field.length;i++){
-  const f=field[i],p=i*4;
-  if(f<THRESHOLD-FEATHER*.5){pixels[p]=bg[0];pixels[p+1]=bg[1];pixels[p+2]=bg[2];pixels[p+3]=255;continue;}
-  const s=Math.min(1,(f-THRESHOLD)/FEATHER+.5),alpha=s*s*(3-2*s);
-  const k=Math.min(1,(f-THRESHOLD)/DEPTH),c=k*(2-k);
-  pixels[p]=bg[0]+(rim[0]+dr*c-bg[0])*alpha;
-  pixels[p+1]=bg[1]+(rim[1]+dg*c-bg[1])*alpha;
-  pixels[p+2]=bg[2]+(rim[2]+db*c-bg[2])*alpha;
-  pixels[p+3]=255;
- }
+const BASE=hsl(FILL);
+export const FILL_HUE=BASE.h,FILL_SATURATION=BASE.s,FILL_LIGHTNESS=BASE.l;
+export function colourFor(hue){
+ const h=((hue%360)+360)%360,l=FILL_LIGHTNESS,c=(1-Math.abs(2*l-1))*FILL_SATURATION,x=c*(1-Math.abs(h/60%2-1)),m=l-c/2;
+ const [r,g,b]=h<60?[c,x,0]:h<120?[x,c,0]:h<180?[0,c,x]:h<240?[0,x,c]:h<300?[x,0,c]:[c,0,x];
+ return '#'+[r,g,b].map(v=>Math.round((v+m)*255).toString(16).padStart(2,'0')).join('').toUpperCase();
 }
-export class MetaballRenderer {
- constructor(canvas,{scale=.5}={}){
+export const RENDER_PARAMS=Object.freeze({hue:Object.freeze({min:0,max:360,default:FILL_HUE})});
+// Fill to outline: the outline's thickness is inversely proportional to how long the user has been
+// interacting (held shaking, ShakeDrain seconds): radius × OUTLINE_SECONDS / (OUTLINE_SECONDS + t).
+// At t = 0 that is the full radius, a solid disc; after 1 s half the radius; after 10 s a 1/11 ring
+// (about 2 px), never thinner than MIN_OUTLINE. As the drain seeps back after release, it fills in again.
+export const OUTLINE_SECONDS=1,MIN_OUTLINE=1.5;
+export function outlineWidth(radius,seconds){
+ const t=Math.max(0,Number.isFinite(seconds)?seconds:0);
+ return Math.max(Math.min(MIN_OUTLINE,radius),radius*OUTLINE_SECONDS/(OUTLINE_SECONDS+t));
+}
+// Smooth closed outline through the nodes: quadratic curves between edge midpoints. With `inset`, every
+// node is first moved that far toward the centre (the hole of an outlined body), appended to the path.
+export function tracePath(ctx,nodes,inset=0,centre=null){
+ const n=nodes.length,at=p=>{if(!inset)return p;const dx=p.x-centre.x,dy=p.y-centre.y,d=Math.hypot(dx,dy)||1,k=Math.max(0,d-inset)/d;return {x:centre.x+dx*k,y:centre.y+dy*k};};
+ const pts=nodes.map(at),last=pts[n-1],first=pts[0];
+ if(!inset)ctx.beginPath();
+ ctx.moveTo((last.x+first.x)/2,(last.y+first.y)/2);
+ for(let i=0;i<n;i++){const p=pts[i],q=pts[(i+1)%n];ctx.quadraticCurveTo(p.x,p.y,(p.x+q.x)/2,(p.y+q.y)/2);}
+ ctx.closePath();
+}
+export class JellyRenderer {
+ constructor(canvas){
   this.canvas=canvas;canvas.width=480;canvas.height=480;
-  this.context=canvas.getContext('2d',{alpha:false});
-  this.buffer=document.createElement('canvas');
-  this.buffer.width=this.buffer.height=Math.round(480*scale);this.scale=this.buffer.width/480;
-  this.bufferContext=this.buffer.getContext('2d',{alpha:false});
-  const count=this.buffer.width*this.buffer.height;
-  this.field=new Float32Array(count);
-  this.image=this.bufferContext.createImageData(this.buffer.width,this.buffer.height);
-  this.points=[];
-  this.context.imageSmoothingEnabled=true;this.context.imageSmoothingQuality='high';
+  this.ctx=canvas.getContext('2d',{alpha:false});
+  this.hue=RENDER_PARAMS.hue.default;
  }
- draw(blobs,dullness=0){
-  const s=this.scale;
-  while(this.points.length<blobs.length)this.points.push({x:0,y:0,r:0});
-  this.points.length=blobs.length;
-  for(let i=0;i<blobs.length;i++){const p=this.points[i],b=blobs[i];p.x=b.x*s;p.y=b.y*s;p.r=b.r*s;}
-  paintPixels(this.buffer.width,this.buffer.height,this.points,dullness,this.field,this.image.data);
-  this.bufferContext.putImageData(this.image,0,0);
-  this.context.drawImage(this.buffer,0,0,480,480);
+ set(name,value){
+  const p=RENDER_PARAMS[name];if(!p||!Number.isFinite(value))return;
+  this[name]=Math.max(p.min,Math.min(p.max,value));
+ }
+ get fill(){return colourFor(this.hue);}
+ // interactSeconds: how long the user has been interacting (0 = solid fill). colourOf(body) may give a
+ // body its own colour for this frame (a new colour spreading through the population); null keeps the fill.
+ draw(bodies,interactSeconds=0,colourOf=null){
+  const c=this.ctx;
+  c.fillStyle=BACKGROUND;c.fillRect(0,0,480,480);
+  c.save();c.beginPath();c.arc(240,240,240,0,Math.PI*2);c.clip();
+  const fill=this.fill;
+  for(const body of bodies){
+   const width=outlineWidth(body.radius,interactSeconds);
+   c.fillStyle=colourOf?.(body)??fill;
+   tracePath(c,body.nodes);
+   if(width<body.radius){tracePath(c,body.nodes,width,body.centroid);c.fill('evenodd');}else c.fill();
+  }
+  c.restore();
  }
 }

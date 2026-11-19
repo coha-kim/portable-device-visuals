@@ -1,0 +1,26 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {screenGravity,tiltGravity,GravityInput,G,SENSOR_FRESH_MS} from '../gravity.mjs';
+const near=(a,b,msg)=>assert.ok(Math.abs(a.x-b.x)<1e-6&&Math.abs(a.y-b.y)<1e-6,`${msg}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+test('accelerometer to screen gravity: contents feel the opposite of the specific force',()=>{
+ near(screenGravity({x:0,y:0,z:G}),{x:0,y:0},'flat on a table: nothing in the screen plane');
+ near(screenGravity({x:0,y:G,z:0}),{x:0,y:1},'held upright: blobs fall to the bottom of the screen');
+ near(screenGravity({x:-G,y:0,z:0}),{x:1,y:0},'right edge down: blobs go right');
+ near(screenGravity({x:G*.5,y:0,z:G*.866}),{x:-.5,y:0},'left edge down 30°: half a g to the left');
+ // Moving the device right (a = +x, at rest otherwise flat) pushes the contents left.
+ near(screenGravity({x:3,y:0,z:G}),{x:-3/G,y:0},'contents lag behind a push');
+ // Landscape (screen turned 90°): the device's top now points to the user's left.
+ near(screenGravity({x:0,y:G,z:0},90),{x:1,y:0},'device top down in landscape = screen right side down');
+ assert.equal(screenGravity(null),null);assert.equal(screenGravity({x:NaN,y:0}),null);
+});
+test('tilt sliders give the matching gravity; the input smooths and prefers a fresh sensor',()=>{
+ near(tiltGravity(0,0),{x:0,y:0},'level');near(tiltGravity(90,0),{x:1,y:0},'right edge straight down');
+ near(tiltGravity(0,30),{x:0,y:.5},'30° toward the user');
+ const g=new GravityInput();g.setTilt(0,30);
+ let v;for(let i=0;i<60;i++)v=g.step(1/60,0);near(v,{x:0,y:.5},'manual tilt after smoothing');
+ g.reading({x:-G,y:0,z:0},0,1000);for(let i=0;i<60;i++)v=g.step(1/60,1000+i*4);
+ assert.ok(v.x>.99&&Math.abs(v.y)<.01,'sensor wins while fresh');
+ for(let i=0;i<60;i++)v=g.step(1/60,1000+SENSOR_FRESH_MS+100+i*16);
+ near(v,{x:0,y:.5},'stale sensor: back to the sliders');
+ const one=g.step(0,5000,{x:.3,y:0});assert.ok(Math.abs(one.x-.3)<1e-6,'shake push added for one frame');
+});

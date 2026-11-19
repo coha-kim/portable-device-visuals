@@ -1,0 +1,59 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+import {readFile,access} from 'node:fs/promises';
+import {resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {PATCHES,HEADER,patchSketch} from '../ambient-portable.mjs';
+import {createHarveyServer} from '../connection-v1/server-v1.mjs';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const read=path=>readFile(resolve(root,path),'utf8');
+test('the portable sketch is the ambient sketch plus only the listed patches',async()=>{
+ const source=await read('ambient/sketch.js'),built=await read('ambient/sketch-portable.js');
+ assert.equal(built,patchSketch(source),'regenerate with npm run sync-ambient');
+ // Undo the patches: what is left is byte-for-byte the ambient file.
+ let undone=built.slice(HEADER.length);for(const [from,to] of PATCHES)undone=undone.replace(to,from);
+ assert.equal(undone,source);
+ assert.match(built,/const POP_COUNT = 1;/);assert.match(built,/const POP_COLORS = Object.freeze\(\['#00E2B7'\]\);/);
+ assert.match(built,/const CANVAS_W = 600;/);assert.match(built,/const CANVAS_H = 600;/);assert.match(built,/background\('#594F47'\)/);
+ assert.throws(()=>patchSketch('nothing to patch'),/expected once/);
+});
+test('ambient/sketch.js matches the latest ambient-device-visuals sketch when that repo is present',async t=>{
+ const sibling=resolve(root,'..','ambient-device-visuals','sketch.js');
+ try{await access(sibling);}catch{t.skip('ambient-device-visuals not checked out');return;}
+ assert.equal(await read('ambient/sketch.js'),await readFile(sibling,'utf8'),'run npm run sync-ambient');
+});
+test('the page runs the copied sketch inside the 480 × 480 round display and maps attraction like ambient',async()=>{
+ const html=await read('index.html'),css=await read('style.css'),app=await read('app.js');
+ assert.match(html,/<div id="display"[^>]*><div id="canvas-holder"><\/div><\/div>/);
+ const scripts=[...html.matchAll(/<script[^>]*src="([^"?]+)/g)].map(m=>m[1]);
+ assert.deepEqual(scripts,['vendor/p5-2.3.1.min.js','ambient/sketch-portable.js','app.js']);
+ assert.match(css,/#display \{ width: 480px; height: 480px; border-radius: 50%; overflow: hidden; background: #594F47; \}/);
+ assert.match(css,/#display canvas \{[^}]*width: 480px !important; height: 480px !important;/);
+ assert.match(app,/window\.harveyAmbientV1=\{update\(\)\{/);
+ assert.match(app,/attractionFor\(link\.state\(population\)\.intensity\)/);
+ assert.match(app,/window\.updateParamsFromSensor\?\.\(\{attractionStrengths\}\)/);
+ // Same mapping as the ambient display's own link.
+ const ambientLink=await readFile(resolve(root,'..','ambient-device-visuals','ambient-link-v1.mjs'),'utf8').catch(()=>null);
+ if(ambientLink)assert.match(ambientLink,/attractionFor\(link\.state\(population\)\.intensity\)/);
+});
+test('wax sliders drive the sketch\'s own size, merge pull, speed and buoyancy, defaulting to ambient values',async()=>{
+ const html=await read('index.html'),app=await read('app.js'),sketch=await read('ambient/sketch.js');
+ for(const id of ['size','merging','speed','gravity','wax-reset'])assert.match(html,new RegExp(`id="${id}"`));
+ assert.match(app,/size:\{min:30,max:110,step:1,default:65,get:\(\)=>overallSize,set:v=>updateParamsFromSensor\(\{overallSize:v\}\)/);
+ assert.match(app,/merging:\{min:0,max:1,step:\.01,default:\.5,get:\(\)=>merging,set:setMerging/);
+ // Merging 0.5 reproduces the ambient fusing rules exactly; 0 never fuses.
+ assert.match(app,/DRAIN_FRAMES=m>0\?Math\.round\(40\*Math\.pow\(\.5\/m,1\.5\)\):Infinity;/);
+ assert.match(app,/FUSE_REACH=\.8\+\.15\*more;SEPARATING_SPEED=\.05\+\.25\*more;tuning\.COALESCE_PULL=1\.5\*more;/);
+ assert.match(sketch,/const DRAIN_FRAMES = 40;/);assert.match(sketch,/const SEPARATING_SPEED = 0\.05;/);assert.match(sketch,/const FUSE_REACH = 0\.8;/);
+ assert.match(app,/speed:\{[^}]*default:1,get:\(\)=>speedByPop\[0\],set:v=>updateParamsFromSensor\(\{speeds:\[v\]\}\)/);
+ assert.match(app,/gravity:\{[^}]*default:\.8,get:\(\)=>tuning\.BUOYANCY_PX/);
+ // Defaults match the ambient sketch.
+ assert.match(sketch,/let overallSize = 65;/);assert.match(sketch,/COALESCE_PULL: 0,/);assert.match(sketch,/BUOYANCY_PX: 0\.8,/);
+});
+test('paired preview serves the copied ambient sketch and p5 to the portable',async t=>{
+ const {server}=createHarveyServer();server.listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base=`http://127.0.0.1:${server.address().port}/portable/`;
+ for(const path of ['index.html','app.js','style.css','ambient/sketch-portable.js','shake-drain.mjs','vendor/p5-2.3.1.min.js','harvey-link-v1.mjs','interaction-v15.mjs'])
+  assert.equal((await fetch(base+path)).status,200,path);
+});

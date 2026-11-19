@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Portable Device Visuals</title>
+  <link rel="stylesheet" href="style.css?softbody-14">
+</head>
+<body>
+  <h1>Palm device</h1>
+  <p>2.1″ round display · 480 × 480 pixels</p>
+  <div id="display" aria-label="Round display preview, 480 by 480 pixels"><canvas id="scene" width="480" height="480" aria-hidden="true"></canvas></div>
+  <p id="metrics" aria-live="off">6 soft bodies</p>
+
+  <fieldset id="tuning">
+    <legend>Jelly</legend>
+    <p><label for="stiffness">Spring stiffness</label> <input id="stiffness" data-param="stiffness" type="range" min="0" max="1" step="0.01"> <output for="stiffness"></output></p>
+    <p><label for="size">Size of blobs</label> <input id="size" data-param="size" type="range" min="0" max="1" step="0.01"> <output for="size"></output></p>
+    <p><label for="deformation">Collision deformation</label> <input id="deformation" data-param="deformation" type="range" min="0" max="1" step="0.01"> <output for="deformation"></output></p>
+    <p><label for="count">Number of blobs</label> <input id="count" data-param="count" type="range" min="0" max="1" step="0.01"> <output for="count"></output></p>
+    <p><label for="gravity">Gravity</label> <input id="gravity" data-param="gravity" type="range" min="0" max="1" step="0.01"> <output for="gravity"></output></p>
+    <p><label for="speed">Speed</label> <input id="speed" data-param="speed" type="range" min="0" max="1" step="0.01"> <output for="speed"></output></p>
+    <p><label for="freedom">Free wander</label> <input id="freedom" data-param="freedom" type="range" min="0" max="1" step="0.01"> <output for="freedom"></output></p>
+    <p><label for="slime">Sliminess (at rest)</label> <input id="slime" data-param="slime" type="range" min="0" max="1" step="0.01"> <output for="slime"></output></p>
+    <p><label for="translucency">Translucency</label> <input id="translucency" data-param="translucency" type="range" min="0" max="1" step="0.01"> <output for="translucency"></output></p>
+    <p><label for="wobble">Wobble</label> <input id="wobble" data-param="wobble" type="range" min="0" max="1" step="0.01"> <output for="wobble"></output></p>
+    <p><button id="tuning-reset" type="button">Reset</button></p>
+  </fieldset>
+
+  <fieldset id="laptop-test">
+    <legend>Interaction (shaking drains the slime; also sent to ambient)</legend>
+    <p><button id="hold" type="button" aria-pressed="false">Hold</button> <button id="simulate" type="button" aria-pressed="false">Hold + shake test</button> <button id="motion-setup" type="button">Use phone motion</button></p>
+    <p><label for="shake-strength">Test strength</label> <input id="shake-strength" type="range" min="0.1" max="1" step="0.05" value="0.65"></p>
+    <p id="motion-status">Hold the button, or use the shake test.</p>
+  </fieldset>
+
+  <section id="welcome" aria-label="Motion setup" hidden>
+    <h2>Hold, then shake.</h2>
+    <p>Hold while shaking: the longer you shake, the less slimy the blobs become. Interaction is also sent to the ambient display.</p>
+    <button id="enable" type="button">Enable motion</button> <button id="view" type="button">Back to preview</button>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+  <script type="module" src="app.js?softbody-14"></script>
+</body>
+</html>

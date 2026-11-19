@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#594F47">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Portable Device Visuals</title>
+  <link rel="stylesheet" href="style.css?v=palette-9">
+</head>
+<body>
+  <main id="prototype">
+    <header class="display-caption">
+      <h1>Palm device</h1>
+      <p>2.1″ round display · 480 × 480 pixels</p>
+    </header>
+    <div id="display" aria-label="Round display preview, 480 by 480 pixels">
+      <canvas id="scene" width="480" height="480" aria-hidden="true"></canvas>
+    </div>
+    <div id="prototype-controls">
+  <button id="hold" type="button" aria-label="Hold to create more space" aria-pressed="false" aria-describedby="hint"></button>
+  <p id="hint">Hold the button. Hold longer to create more space.</p>
+    </div>
+  </main>
+  <section id="welcome" aria-label="Motion setup" hidden>
+    <div class="card">
+      <p class="eyebrow">PORTABLE DEVICE</p>
+      <h1>A little movement,<br>a softer colour.</h1>
+      <p>Hold the button while you shake. Shake harder to soften the blobs and create more space on the ambient display. Hold longer for a longer recovery after release.</p>
+      <button id="enable" type="button">Enable motion</button>
+      <button id="view" type="button">Just view the visuals</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+  <button id="retry" type="button" hidden>Enable motion</button>
+  <script type="module" src="app.js?v=palette-9"></script>
+</body>
+</html>

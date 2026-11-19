@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Board Dashboard</title>
+<style>
+:root { --ground:#f4f2ee; --panel:#fbfaf7; --ink:#2b2b2a; --muted:rgba(43,43,42,.7); --grid:rgba(43,43,42,.12); --x:#f47839; --y:#2c6fb7; color-scheme:light; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--ground); color:var(--ink); font:400 14px/1.4 ui-sans-serif,system-ui,sans-serif; padding:20px clamp(16px,3vw,32px); }
+header { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:16px; }
+h1 { margin:0; font-size:18px; font-weight:600; }
+#status { font:12px ui-monospace,Menlo,monospace; color:var(--muted); }
+#status::before { content:""; display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:var(--muted); }
+#status.live::before { background:var(--ink); }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-bottom:12px; }
+.tile, .card { background:var(--panel); border-radius:12px; padding:12px 14px; }
+.tile b { display:block; font:500 22px/1.2 ui-monospace,Menlo,monospace; }
+.tile span, .card h2 { font:400 12px/1.4 ui-sans-serif,system-ui,sans-serif; color:var(--muted); margin:0; }
+.tile i { display:inline-block; width:14px; height:14px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+.grid { display:grid; grid-template-columns:minmax(240px,300px) minmax(0,1fr); gap:12px; }
+.charts { display:grid; gap:12px; min-width:0; }
+.card h2 { display:flex; justify-content:space-between; gap:12px; margin-bottom:6px; }
+.legend i { display:inline-block; width:14px; height:2px; vertical-align:3px; margin:0 4px 0 10px; }
+canvas { display:block; width:100%; }
+.chart { height:130px; cursor:crosshair; } .tall { height:190px; }
+#dial { aspect-ratio:1; }
+.note { font-size:12px; color:var(--muted); margin:8px 0 0; }
+@media (max-width:720px) { .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Board dashboard</h1><div id="status">Waiting for the board</div></header>
+<section class="tiles">
+  <div class="tile"><b id="v-tilt">–</b><span>Tilt force (g)</span></div>
+  <div class="tile"><b id="v-pose">–</b><span>Pose</span></div>
+  <div class="tile"><b id="v-shake">–</b><span>Tip (0 = under 10°, 1 = 60° or more)</span></div>
+  <div class="tile"><b id="v-drain">–</b><span>Drain (s of 10)</span></div>
+  <div class="tile"><b id="v-touch">–</b><span>Touch</span></div>
+  <div class="tile"><b id="v-button">–</b><span>Button</span></div>
+  <div class="tile"><b id="v-edit">–</b><span>Colour edit</span></div>
+  <div class="tile"><b id="v-hue">–</b><span>Population colour</span></div>
+  <div class="tile"><b id="v-fps">–</b><span>Frames per second</span></div>
+  <div class="tile"><b id="v-steps">–</b><span>Physics steps/s (want 190)</span></div>
+  <div class="tile"><b id="v-core">–</b><span>Physics core load</span></div>
+</section>
+<div class="grid">
+  <div class="card"><h2>Gravity on the screen</h2><canvas id="dial"></canvas>
+    <p class="note">Dot: where blobs are being pulled. Inner ring: level zone, 0.2 g. Outer ring: tilt cap, 0.3 g.</p></div>
+  <div class="charts">
+    <div class="card"><h2><span>Gravity, last 30 s (g)</span><span class="legend"><i style="background:var(--x)"></i>X (right +)<i style="background:var(--y)"></i>Y (down +)</span></h2><canvas class="chart tall" id="c-g"></canvas></div>
+    <div class="card"><h2>Tip from the press, last 30 s (drains faster towards 1, while the button is held)</h2><canvas class="chart" id="c-shake"></canvas></div>
+    <div class="card"><h2>Drain, last 30 s (seconds)</h2><canvas class="chart" id="c-drain"></canvas></div>
+  </div>
+</div>
+<script>
+const WINDOW = 30, css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const INK = css('--ink'), MUTED = css('--muted'), GRID = css('--grid'), X = css('--x'), Y = css('--y');
+const EDIT = ['Off', 'Pressing', 'Wheel open', 'Aiming', 'Flying'], data = [];
+const $ = id => document.getElementById(id), set = (id, text) => { $(id).textContent = text; };
+function fit(canvas) {
+  const r = canvas.getBoundingClientRect(), k = devicePixelRatio || 1, w = Math.round(r.width * k), h = Math.round(r.height * k);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const c = canvas.getContext('2d'); c.setTransform(k, 0, 0, k, 0, 0); c.clearRect(0, 0, r.width, r.height); return [c, r.width, r.height];
+}
+const hoverAt = {};
+function chart(id, series, min, max, ticks, guide, unit) {
+  const canvas = $(id), [c, w, h] = fit(canvas), left = 34, top = 6, bottom = h - 8, now = data.at(-1)?.t ?? Date.now() / 1000;
+  const px = t => left + (w - left - 4) * (1 - (now - t) / WINDOW), py = v => bottom - (Math.max(min, Math.min(max, v)) - min) / (max - min) * (bottom - top);
+  c.font = '11px ui-monospace,Menlo,monospace'; c.textBaseline = 'middle'; c.textAlign = 'right';
+  for (const v of ticks) { c.strokeStyle = GRID; c.lineWidth = 1; c.beginPath(); c.moveTo(left, py(v)); c.lineTo(w - 4, py(v)); c.stroke(); c.fillStyle = MUTED; c.fillText(v, left - 6, py(v)); }
+  if (guide !== null) { c.setLineDash([3, 3]); c.strokeStyle = MUTED; c.beginPath(); c.moveTo(left, py(guide)); c.lineTo(w - 4, py(guide)); c.stroke(); c.setLineDash([]); }
+  for (const [key, colour] of series) {
+    c.strokeStyle = colour; c.lineWidth = 2; c.lineJoin = 'round'; c.beginPath(); let started = false;
+    for (const d of data) { if (now - d.t > WINDOW) continue; started ? c.lineTo(px(d.t), py(d[key])) : c.moveTo(px(d.t), py(d[key])); started = true; }
+    c.stroke();
+  }
+  const mouse = hoverAt[id];
+  if (mouse !== undefined && data.length) {
+    const t = now - (1 - (mouse - left) / (w - left - 4)) * WINDOW; let best = data[0]; for (const d of data) if (Math.abs(d.t - t) < Math.abs(best.t - t)) best = d;
+    const x = px(best.t); c.strokeStyle = MUTED; c.lineWidth = 1; c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+    const text = `${(now - best.t).toFixed(1)} s ago  ` + series.map(([k]) => `${k === 'gx' ? 'X ' : k === 'gy' ? 'Y ' : ''}${best[k].toFixed(2)}${unit}`).join('  ');
+    c.textAlign = x > w / 2 ? 'right' : 'left'; c.fillStyle = INK; c.fillText(text, x + (x > w / 2 ? -8 : 8), top + 8);
+  }
+}
+for (const id of ['c-g', 'c-shake', 'c-drain']) {
+  $(id).addEventListener('pointermove', e => { hoverAt[id] = e.clientX - e.target.getBoundingClientRect().left; });
+  $(id).addEventListener('pointerleave', () => { delete hoverAt[id]; });
+}
+function dial() {
+  const [c, w, h] = fit($('dial')), cx = w / 2, cy = h / 2, full = Math.min(w, h) / 2 - 4, scale = full / 1.2, last = data.at(-1);
+  c.fillStyle = '#cccccc'; c.beginPath(); c.arc(cx, cy, full, 0, 7); c.fill();
+  c.strokeStyle = INK; c.lineWidth = 1; for (const r of [.2, .3]) { c.setLineDash(r === .2 ? [3, 3] : []); c.beginPath(); c.arc(cx, cy, r * scale, 0, 7); c.stroke(); } c.setLineDash([]);
+  if (!last) return;
+  const x = cx + Math.max(-1.2, Math.min(1.2, last.gx)) * scale, y = cy + Math.max(-1.2, Math.min(1.2, last.gy)) * scale;
+  c.strokeStyle = INK; c.lineWidth = 2; c.beginPath(); c.moveTo(cx, cy); c.lineTo(x, y); c.stroke();
+  c.fillStyle = X; c.strokeStyle = '#cccccc'; c.beginPath(); c.arc(x, y, 7, 0, 7); c.fill(); c.stroke();
+}
+function hsl(h) { return `hsl(${h} 89.5% 59%)`; }
+function show(d) {
+  const m = Math.hypot(d.gx, d.gy); set('v-tilt', m.toFixed(2)); set('v-shake', d.tip.toFixed(2)); set('v-drain', d.drain.toFixed(1));
+  set('v-pose', m < .2 ? 'Level' : Math.abs(d.upZ) < .5 ? 'Upright' : 'Tilted'); set('v-touch', d.touch ? 'Touching' : 'Free'); set('v-button', d.asleep ? 'Asleep' : d.held ? 'Held' : 'Free'); set('v-edit', EDIT[d.edit] ?? '–');
+  $('v-hue').innerHTML = `<i style="background:${hsl(d.hue)}"></i>${Math.round(d.hue)}°`;
+}
+function draw() {
+  chart('c-g', [['gx', X], ['gy', Y]], -1.2, 1.2, [-1, -.5, 0, .5, 1], null, ' g');
+  chart('c-shake', [["tip", INK]], 0, 1, [0, .5, 1], 0, '');
+  chart('c-drain', [['drain', INK]], 0, 10, [0, 5, 10], null, ' s');
+  dial(); requestAnimationFrame(draw);
+}
+const events = new EventSource('/events');
+events.onmessage = e => {
+  const m = JSON.parse(e.data), status = $('status');
+  if (m.status) { status.className = m.status === 'connected' ? 'live' : ''; status.textContent = { 'no board': 'No board found', connected: 'Connected', silent: 'Connected, but no values arriving', reconnecting: 'Reconnecting' }[m.status]; return; }
+  if ('fps' in m) { set('v-fps', m.fps.toFixed(0)); set('v-steps', m.steps.toFixed(0)); set('v-core', `${m.core.toFixed(0)}%`); return; }
+  status.className = 'live'; status.textContent = 'Live'; data.push(m); while (data.length && m.t - data[0].t > WINDOW + 1) data.shift(); show(m);
+};
+events.onerror = () => { $('status').className = ''; $('status').textContent = 'Dashboard server stopped'; };
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

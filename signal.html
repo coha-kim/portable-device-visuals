@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvey Signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap">
+<style>
+/* Layout: two halves. Left, the Pocket's blobs over a wall of words on Harvey blue; right, the Lounge on baby blue.
+   The status bubble sits across the seam at the bottom. */
+:root { --blue: #3f7abb; --sky: #b2d8e5; --ink: #0f0f0f; --bubble-ink: #1f3a0b; --sans: "DM Sans", system-ui, sans-serif; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--sky); font-family: var(--sans); color: var(--ink); }
+.page { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.left { position: relative; background: var(--blue); overflow: hidden; touch-action: none; }
+.left.over { cursor: grab; }
+.holding .left { cursor: grabbing; }
+.right { position: relative; background: var(--sky); overflow: hidden; }
+#mine { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#room { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.words { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding-left: 11.8%; pointer-events: none; }
+.words p { margin: 0; font-size: min(8.4vh, 5.3vw); line-height: 1.14; letter-spacing: -.012em; white-space: nowrap; }
+.words p.flip { animation: flip .4s cubic-bezier(.3, 1.3, .5, 1); }
+@keyframes flip { 0% { opacity: 0; transform: translateY(.18em); } 100% { opacity: 1; transform: none; } }
+
+/* The bubble: glossy green, tail at its lower left. */
+.bubble { position: fixed; left: 33.25%; top: 80.4%; width: 29%; aspect-ratio: 800 / 236; z-index: 2; pointer-events: none;
+  container-type: inline-size; filter: drop-shadow(0 .4vw .6vw rgba(10, 30, 60, .2)); }
+.bubble .shape { position: absolute; inset: 0; transform-origin: 1% 90%; }
+.bubble svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.bubble p { position: absolute; left: 13%; right: 5%; top: 6%; bottom: 8%; margin: 0; display: grid; place-items: center; text-align: center;
+  font-size: 6.4cqi; font-weight: 500; line-height: 1.1; color: var(--bubble-ink); text-shadow: 0 1px 0 rgba(255, 255, 255, .45); text-wrap: balance; }
+.bubble.pop .shape { animation: pop .5s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes pop { 0% { transform: scale(.9, .84); } 55% { transform: scale(1.03, 1.05); } 100% { transform: none; } }
+
+.no-webgl .left::after { content: "This page needs WebGL2."; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; }
+@media (max-aspect-ratio: 1/1) {
+  .page { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .words p { font-size: min(4.2vh, 11.5vw); }
+  .bubble { left: 18%; top: 44%; width: 62%; }
+}
+@media (prefers-reduced-motion: reduce) { .bubble.pop .shape, .words p.flip { animation: none; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <section class="left" aria-label="Your Pocket's blobs. Pull one away from the others.">
+    <div class="words" aria-hidden="true"><p>Hold and drain</p><p>Hold and drain</p><p>Hold and drain</p><p>Hold and drain</p><p>Hold and drain</p><p>Hold and drain</p><p>Hold and drain</p><p>Hold and drain</p></div>
+    <canvas id="mine"></canvas>
+  </section>
+  <section class="right" aria-label="The Lounge: two blobs, merged until yours part.">
+    <canvas id="room"></canvas>
+  </section>
+</main>
+<div class="bubble" aria-live="polite">
+  <div class="shape">
+    <svg viewBox="0 0 800 236" aria-hidden="true">
+      <defs>
+        <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b6e27f"/><stop offset=".42" stop-color="#93d044"/><stop offset=".78" stop-color="#9bd84b"/><stop offset="1" stop-color="#b6ea62"/>
+        </linearGradient>
+        <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff" stop-opacity=".92"/><stop offset=".55" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity=".12"/>
+        </linearGradient>
+        <radialGradient id="glow" cx=".5" cy="1" r=".6">
+          <stop offset="0" stop-color="#d8f59a" stop-opacity=".75"/><stop offset="1" stop-color="#d8f59a" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <path d="M175 10H685A105 105 0 0 1 685 220H140Q70 220 2 214Q58 196 78 150A105 105 0 0 1 175 10Z" fill="url(#body)" stroke="#7fb83a" stroke-width="2.5"/>
+      <path d="M175 10H685A105 105 0 0 1 685 220H140Q70 220 2 214Q58 196 78 150A105 105 0 0 1 175 10Z" fill="url(#glow)"/>
+      <rect x="128" y="22" width="580" height="84" rx="42" fill="url(#gloss)"/>
+    </svg>
+    <p id="said"></p>
+  </div>
+</div>
+<script type="module" src="signal.mjs?v=3"></script>
+</body>
+</html>

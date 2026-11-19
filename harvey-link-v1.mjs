@@ -6,7 +6,7 @@ export function recoverySecondsFor(holdSeconds) {
   if (!Number.isFinite(holdSeconds) || holdSeconds <= 0) return 0;
   return Math.max(RECOVERY_MIN_SECONDS, Math.min(RECOVERY_MAX_SECONDS, holdSeconds * RECOVERY_MULTIPLIER));
 }
-export const BASE_ATTRACTION = 1.3;
+export const BASE_ATTRACTION = 0.8; // inter-population baseline only
 export const OWNER_POPULATION = 1; // Default owner is the second population (zero based).
 export const newState = () => ({ phase: 'idle', intensity: 0, period: 0, holdDurationSeconds: 0, recoverySeconds: 0 });
 export function recoveryRemaining(progress) {
@@ -21,7 +21,8 @@ export function sampleState(state, now) {
     s.period = Math.min(20, Math.max(s.period, s.holdDurationSeconds));
   } else if (s.phase === 'recovering') {
     const t = s.recoverySeconds > 0 ? (now - s.releasedAt) / (s.recoverySeconds * 1000) : 1;
-    const remaining = recoveryRemaining(t);
+    // A portable's own recovery seeps back evenly, so the ambient stays level with it.
+    const remaining = s.linearRecovery ? Math.max(0, 1 - t) : recoveryRemaining(t);
     s.intensity = s.fromIntensity * remaining;
     s.period = s.fromPeriod * remaining;
     if (t >= 1) { s.phase = 'idle'; s.intensity = 0; s.period = 0; }
@@ -31,11 +32,12 @@ export function sampleState(state, now) {
 export function beginHold(state, now) {
   return { ...sampleState(state, now), phase: 'holding', holdStartedAt: now, holdDurationSeconds: 0, recoverySeconds: 0 };
 }
-export function endHold(state, now) {
+// recoverySeconds: the portable's own recovery, when it reports one; otherwise the hold sets it.
+export function endHold(state, now, recoverySeconds) {
   if (state.phase !== 'holding') return state;
   const s = sampleState(state, now);
   return { ...s, phase: 'recovering', releasedAt: now, fromIntensity: s.intensity, fromPeriod: s.period,
-    recoverySeconds: recoverySecondsFor(s.holdDurationSeconds) };
+    recoverySeconds: recoverySeconds ?? recoverySecondsFor(s.holdDurationSeconds), linearRecovery: recoverySeconds !== undefined };
 }
 export const attractionFor = intensity => BASE_ATTRACTION * (1 - Math.max(0, Math.min(1, intensity)));
 
@@ -88,6 +90,15 @@ export class HarveyLink {
     this.socket.send(JSON.stringify({ version: 1, type, ...(intensity === undefined ? {} : { intensity }) }));
     return true;
   }
+  // Colour transfer (portable only): '#RRGGBB' becomes this population's colour on the ambient display;
+  // null hands back the ambient's own colour. Additive to protocol v1: older ambients ignore it.
+  sendColour(colour) {
+    if (!this.connected) return false;
+    this.socket.send(JSON.stringify({ version: 1, type: 'colour', colour }));
+    return true;
+  }
+  // Colour last set for a population (null = the ambient's own), from the latest snapshot.
+  colour(population = this.population) { return this.snapshot?.colours?.[population] ?? null; }
   state(population = this.population) {
     if (!this.snapshot) return null;
     return sampleState(this.snapshot.states[population], this.snapshot.serverNow + performance.now() - this.receivedAt);

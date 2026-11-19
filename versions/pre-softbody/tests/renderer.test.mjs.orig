@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {paintPixels,palette,BACKGROUND,RIM,CORE,DULL} from '../renderer.mjs';
+const W=120;
+function paint(blobs,dullness=0){const field=new Float32Array(W*W),px=new Uint8ClampedArray(W*W*4);paintPixels(W,blobs,dullness,field,px);return px;}
+const at=(px,x,y)=>Array.from(px.slice((y*W+x)*4,(y*W+x)*4+3));
+test('supplied palette: #594F47 background, #97D3B2 rim to #CFE0BD core, dulling to #729B82',()=>{
+ assert.deepEqual(BACKGROUND,[89,79,71]);assert.deepEqual(RIM,[151,211,178]);assert.deepEqual(CORE,[207,224,189]);assert.deepEqual(DULL,[114,155,130]);
+ assert.deepEqual(palette(1),{rim:[...DULL],core:[...DULL]});assert.deepEqual(palette(0),{rim:[...RIM],core:[...CORE]});
+});
+test('centres lighten with field depth; full dullness flattens to #729B82',()=>{
+ const blobs=[{x:60,y:60,r:30}];
+ const fresh=paint(blobs),edge=at(fresh,60,35),centre=at(fresh,60,60);
+ assert.ok(centre[0]>edge[0]&&centre[1]>edge[1],JSON.stringify({edge,centre}));
+ assert.deepEqual(at(paint(blobs,1),60,60),[...DULL]);
+ assert.deepEqual(at(fresh,60,5),[...BACKGROUND]);
+});
+test('overlapping orbs fuse into one shape; orbs further apart stay separate',()=>{
+ const middle=d=>at(paint([{x:60-d/2,y:60,r:20},{x:60+d/2,y:60,r:20}]),60,60);
+ assert.notDeepEqual(middle(30),[...BACKGROUND],'fuses when close');
+ assert.deepEqual(middle(42),[...BACKGROUND],'separate once beyond ~0.83 × summed radius');
+});
+test('every pixel is rewritten each frame, so moved orbs leave no trail',()=>{
+ const field=new Float32Array(W*W),px=new Uint8ClampedArray(W*W*4);
+ paintPixels(W,[{x:40,y:40,r:15}],0,field,px);paintPixels(W,[{x:80,y:80,r:15}],0,field,px);
+ assert.deepEqual(at(px,40,40),[...BACKGROUND]);assert.ok(px.every((v,i)=>i%4!==3||v===255));
+});

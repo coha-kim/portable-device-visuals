@@ -1,0 +1,212 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+import {SoftBodyWorld,BODY_COUNT,NODES,CENTER,DISPLAY_RADIUS,STIFFNESS_MIN,STIFFNESS_MAX,STIFFNESS_DEFAULT,stiffnessFor,PARAMS,valueFor,sliderFor,ShakeDrain,FIRM_SECONDS,RECOVER_SECONDS} from '../softbody.mjs';
+import {createHarveyServer} from '../connection-v1/server-v1.mjs';
+const TAU=Math.PI*2;
+const seeded=(s=11)=>()=>((s=(Math.imul(s,1664525)+1013904223)>>>0)/4294967296);
+const finite=w=>w.bodies.every(b=>b.nodes.every(n=>[n.x,n.y,n.vx,n.vy].every(Number.isFinite)));
+const inGlass=w=>w.bodies.every(b=>b.nodes.every(n=>Math.hypot(n.x-CENTER,n.y-CENTER)<=DISPLAY_RADIUS+1e-6));
+// How far the outline departs from a circle: spread of node distances from the centroid.
+function roughness(b){const c=b.centroid,d=b.nodes.map(n=>Math.hypot(n.x-c.x,n.y-c.y)),m=d.reduce((s,x)=>s+x,0)/d.length;return Math.max(...d)/m-Math.min(...d)/m;}
+test('six small circular soft bodies, each a ring of spring-linked nodes',()=>{
+ const w=new SoftBodyWorld({random:seeded()});
+ assert.equal(w.bodies.length,BODY_COUNT);assert.equal(BODY_COUNT,6);
+ for(const b of w.bodies){assert.equal(b.nodes.length,NODES);assert.ok(roughness(b)<.02,'starts round');assert.ok(b.radius<50,'small');}
+ assert.equal(w.stiffness,STIFFNESS_DEFAULT);
+});
+test('bodies drift and morph on their own without any contact',()=>{
+ const w=new SoftBodyWorld({random:seeded(),count:1}),b=w.bodies[0];let peak=0,travelled=0,prev=b.centroid;
+ for(let f=0;f<60*20;f++){w.advance(1/60);const c=b.centroid;travelled+=Math.hypot(c.x-prev.x,c.y-prev.y);prev=c;if(w.stats.wallContacts===0&&w.stats.bodyContacts===0)peak=Math.max(peak,roughness(b));}
+ // Distance travelled, not net displacement: a random path may come back near where it started.
+ assert.ok(travelled>100,`drifts (${travelled.toFixed(0)} px in 20 s)`);
+ assert.ok(peak>.05,`morphs without touching anything (${peak})`);
+});
+test('the slider maps to spring stiffness, and the world clamps it',()=>{
+ assert.equal(stiffnessFor(0),STIFFNESS_MIN);assert.equal(stiffnessFor(1),STIFFNESS_MAX);assert.equal(stiffnessFor(2),STIFFNESS_MAX);
+ const w=new SoftBodyWorld({random:seeded()});w.setStiffness(9);assert.equal(w.stiffness,STIFFNESS_MAX);w.setStiffness(NaN);assert.equal(w.stiffness,STIFFNESS_MAX);
+});
+// Two bodies pushed into each other: they dent at the contact and spring back afterwards.
+function squeeze(stiffness){
+ const w=new SoftBodyWorld({random:seeded(),count:2,stiffness});
+ const [a,b]=w.bodies,ca=a.centroid,cb=b.centroid;
+ for(const n of a.nodes){n.x+=200-ca.x;n.y+=240-ca.y;n.vx=1.2;}for(const n of b.nodes){n.x+=280-cb.x;n.y+=240-cb.y;n.vx=-1.2;}
+ let dent=0;for(let f=0;f<90;f++){w.advance(1/60);dent=Math.max(dent,roughness(a),roughness(b));}
+ return {w,dent};
+}
+test('colliding bodies stay separate, dent on contact, and dent more when the springs are softer',()=>{
+ const soft=squeeze(STIFFNESS_MIN),stiff=squeeze(STIFFNESS_MAX);
+ for(const {w} of [soft,stiff]){
+  assert.ok(w.stats.bodyContacts>0);
+  const [a,b]=w.bodies;assert.ok(a.nodes.every(n=>!b.nodes.some(m=>m===n)));
+ }
+ assert.ok(soft.dent>stiff.dent,JSON.stringify({soft:soft.dent,stiff:stiff.dent}));
+ assert.ok(soft.dent>.08,`visible squash (${soft.dent})`);
+});
+test('the round border squashes a body that hits it; it springs back to near round',()=>{
+ const w=new SoftBodyWorld({random:seeded(),count:1,stiffness:STIFFNESS_DEFAULT}),b=w.bodies[0],c=b.centroid;
+ for(const n of b.nodes){n.x+=CENTER+150-c.x;n.y+=CENTER-c.y;n.vx=2;n.vy=0;}
+ let dent=0;for(let f=0;f<60;f++){w.advance(1/60);dent=Math.max(dent,roughness(b));assert.ok(inGlass(w));}
+ assert.ok(w.stats.wallContacts>0);assert.ok(dent>.08,`squashes on the wall (${dent})`);
+ const area=b.area/b.restArea;assert.ok(area>.85&&area<1.15,`area held by pressure (${area})`);
+});
+test('two minutes at every stiffness stay finite, inside the glass and near rest area',()=>{
+ for(const stiffness of [STIFFNESS_MIN,STIFFNESS_DEFAULT,STIFFNESS_MAX]){
+  const w=new SoftBodyWorld({random:seeded(),stiffness});
+  for(let f=0;f<60*120;f++){w.advance(1/60);if(f%60===0){assert.ok(finite(w)&&inGlass(w));for(const b of w.bodies){const r=b.area/b.restArea;assert.ok(r>.8&&r<1.2,`area ${r}`);}}}
+ }
+});
+test('fixed frame step: 30, 60 and 120 fps drawing give the same motion',()=>{
+ const run=fps=>{const w=new SoftBodyWorld({random:seeded()});for(let f=0;f<fps*5;f++)w.advance(1/fps);return w.bodies.flatMap(b=>b.nodes.map(n=>[n.x,n.y]));};
+ const base=run(60);for(const other of [run(30),run(120)])other.forEach((p,i)=>assert.ok(Math.abs(p[0]-base[i][0])<1e-6&&Math.abs(p[1]-base[i][1])<1e-6));
+});
+test('tuning sliders map 0–1 to each parameter range; defaults round-trip',()=>{
+ for(const [name,p] of Object.entries(PARAMS)){
+  assert.equal(valueFor(name,0),p.min);assert.equal(valueFor(name,1),p.max);
+  assert.ok(Math.abs(valueFor(name,sliderFor(name,p.default))-p.default)<1e-12);
+ }
+ const w=new SoftBodyWorld({random:seeded()});w.set('size',99);assert.equal(w.size,PARAMS.size.max);w.set('nope',1);w.set('speed',NaN);assert.equal(w.speed,PARAMS.speed.default);
+});
+test('size grows or shrinks the bodies through their springs and pressure',()=>{
+ const radius=size=>{const w=new SoftBodyWorld({random:seeded()});w.set('size',size);for(let f=0;f<60*10;f++)w.advance(1/60);
+  assert.ok(finite(w)&&inGlass(w));return w.bodies.reduce((s,b)=>s+Math.sqrt(b.area/Math.PI),0)/w.bodies.length;};
+ const small=radius(.5),normal=radius(1),large=radius(2);
+ assert.ok(small<normal*.6&&large>normal*1.7,JSON.stringify({small,normal,large}));
+});
+test('speed scales drift, and zero speed lets the bodies settle',()=>{
+ const drift=speed=>{const w=new SoftBodyWorld({random:seeded(),count:1});w.set('speed',speed);const a=w.bodies[0].centroid;
+  let path=0,prev=a;for(let f=0;f<60*8;f++){w.advance(1/60);const c=w.bodies[0].centroid;path+=Math.hypot(c.x-prev.x,c.y-prev.y);prev=c;}return path;};
+ const still=drift(0),normal=drift(1),fast=drift(3),fastest=drift(PARAMS.speed.max);
+ assert.ok(still<normal*.2&&fast>normal*2&&fastest>fast*1.2,JSON.stringify({still,normal,fast,fastest}));
+});
+test('free wander loosens the path: more freedom drifts further from it, without changing the path',()=>{
+ const off=freedom=>{const w=new SoftBodyWorld({random:seeded(),count:1}),b=w.bodies[0];w.set('freedom',freedom);let sum=0;
+  for(let f=0;f<60*60;f++){w.advance(1/60);const c=b.centroid,p=b.pathPoint();sum+=Math.hypot(c.x-p.x,c.y-p.y);}
+  return {mean:sum/3600,path:[10,30,50].map(t=>b.pathPoint(t))};};
+ const tight=off(0),free=off(1);
+ assert.ok(free.mean>tight.mean*2,`off-path ${tight.mean.toFixed(0)} → ${free.mean.toFixed(0)} px`);
+ assert.deepEqual(free.path,tight.path,'same path either way');
+});
+test('wobble sets how much a lone body morphs; zero keeps it round',()=>{
+ const peak=wobble=>{const w=new SoftBodyWorld({random:seeded(),count:1});w.set('wobble',wobble);w.set('speed',0);let m=0;
+  for(let f=0;f<60*20;f++){w.advance(1/60);m=Math.max(m,roughness(w.bodies[0]));}return m;};
+ const none=peak(0),normal=peak(PARAMS.wobble.default),strong=peak(PARAMS.wobble.max);
+ assert.ok(none<.02&&normal>none*3&&strong>normal*1.5,JSON.stringify({none,normal,strong}));
+});
+test('collision deformation is separate from stiffness: low values push bodies apart without denting',()=>{
+ const run=deformation=>{
+  const w=new SoftBodyWorld({random:seeded(),count:2});w.set('deformation',deformation);w.set('wobble',0);w.set('speed',0);
+  const [a,b]=w.bodies,ca=a.centroid,cb=b.centroid;
+  for(const n of a.nodes){n.x+=200-ca.x;n.y+=240-ca.y;n.vx=1.2;}for(const n of b.nodes){n.x+=280-cb.x;n.y+=240-cb.y;n.vx=-1.2;}
+  let dent=0,gap=Infinity;for(let f=0;f<90;f++){w.advance(1/60);dent=Math.max(dent,roughness(a),roughness(b));gap=Math.min(gap,Math.hypot(a.centroid.x-b.centroid.x,a.centroid.y-b.centroid.y));}
+  return {dent,gap,w};
+ };
+ const push=run(0),dent=run(1);
+ assert.ok(dent.dent>push.dent*1.5,JSON.stringify({push:push.dent,dent:dent.dent}));
+ assert.ok(push.gap>push.w.bodies[0].radius,'still kept apart when deformation is 0');
+});
+test('number of blobs adds bodies in free space and removes the newest',()=>{
+ const w=new SoftBodyWorld({random:seeded()});
+ w.set('count',10);assert.equal(w.count,10);assert.ok(finite(w)&&inGlass(w));
+ for(let f=0;f<60*20;f++)w.advance(1/60);assert.ok(finite(w)&&inGlass(w));
+ const first=w.bodies[0];w.set('count',1);assert.equal(w.count,1);assert.equal(w.bodies[0],first);
+ w.set('count',3.6);assert.equal(w.count,4);w.set('count',0);assert.equal(w.count,PARAMS.count.min);
+ assert.equal(valueFor('count',.5),Math.round((PARAMS.count.min+PARAMS.count.max)/2));
+});
+test('gravity settles the blobs at the bottom of the glass; none keeps them floating',()=>{
+ const meanY=gravity=>{const w=new SoftBodyWorld({random:seeded()});w.set('gravity',gravity);let y=0,n=0;
+  for(let f=0;f<60*40;f++){w.advance(1/60);if(f>60*20){y+=w.bodies.reduce((s,b)=>s+b.centroid.y,0)/w.count;n++;}}
+  assert.ok(finite(w)&&inGlass(w));return y/n;};
+ const none=meanY(0),full=meanY(PARAMS.gravity.max);
+ assert.ok(full>CENTER+120&&full>none+80,JSON.stringify({none,full}));
+});
+test('each body follows its own random path, not a circle: turning direction keeps changing',()=>{
+ // Path shape only: no slime, so strands to the glass don't add their own tugs.
+ const w=new SoftBodyWorld({random:seeded(),count:1}),b=w.bodies[0];w.set('slime',0);let prev=null,sign=0,switches=0,total=0;
+ for(let f=0;f<60*180;f++){w.advance(1/60);if(f%30)continue;const v=b.velocity,a=Math.atan2(v.y,v.x);
+  if(prev!==null){let d=a-prev;d=(d+Math.PI*3)%TAU-Math.PI;total+=d;const sg=Math.sign(d);if(sg&&sg!==sign&&Math.abs(d)>.02){if(sign)switches++;sign=sg;}}prev=a;}
+ assert.ok(switches>=6,`turn direction switches ${switches}`);
+ assert.ok(Math.abs(total/TAU)<3,`net turns ${(total/TAU).toFixed(2)} (a circling body accumulates many)`);
+ // Different bodies get different paths.
+ const two=new SoftBodyWorld({random:seeded(),count:2}),[p,q]=two.bodies;
+ assert.ok(Math.hypot(p.pathPoint(30).x-q.pathPoint(30).x,p.pathPoint(30).y-q.pathPoint(30).y)>1);
+});
+test('collisions never change a body\'s path: it is knocked off, then rejoins the same curve',()=>{
+ const make=withPartner=>{
+  const w=new SoftBodyWorld({random:seeded(7),count:2});if(!withPartner)w.set('count',1);
+  const [a,b]=w.bodies;
+  // Partner starts overlapping the body, just ahead on its path, and rushing into it: a sure collision.
+  if(b){const ca=a.centroid,ahead=a.pathPoint(2),d=Math.hypot(ahead.x-ca.x,ahead.y-ca.y)||1,ux=(ahead.x-ca.x)/d,uy=(ahead.y-ca.y)/d,c=b.centroid;
+   for(const n of b.nodes){n.x+=ca.x+ux*(a.radius+b.radius)*.85-c.x;n.y+=ca.y+uy*(a.radius+b.radius)*.85-c.y;n.vx=-ux*2;n.vy=-uy*2;}}
+  return w;
+ };
+ const solo=make(false),crowd=make(true),A=crowd.bodies[0],planned=[5,10,20,40].map(t=>A.pathPoint(t));
+ let contact=false,closest=Infinity;
+ for(let f=0;f<60*40;f++){solo.advance(1/60);crowd.advance(1/60);contact||=crowd.stats.bodyContacts>0;
+  if(f>=60*20){const c=A.centroid,p=A.pathPoint();closest=Math.min(closest,Math.hypot(c.x-p.x,c.y-p.y));}}
+ assert.ok(contact,'the partner was pushed into the body, so they collide');
+ assert.deepEqual([5,10,20,40].map(t=>A.pathPoint(t)),planned,'path unchanged by the collision');
+ assert.deepEqual(A.pathPoint(),solo.bodies[0].pathPoint(),'same path position as the undisturbed run');
+ // It may step aside again when the partner passes close (personal space), but it rejoins the path.
+ assert.ok(closest<30,`back on its own path (closest ${closest.toFixed(0)} px in the last 20 s)`);
+});
+test('paired preview serves the soft-body entry points',async t=>{
+ const {server}=createHarveyServer();server.listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base=`http://127.0.0.1:${server.address().port}/portable/`;
+ for(const path of ['softbody.mjs','interaction-v15.mjs','renderer.mjs'])assert.equal((await fetch(base+path)).status,200);
+ const app=await(await fetch(base+'app.js')).text();
+ assert.match(app,/SoftBodyWorld/);assert.match(app,/JellyRenderer/);assert.match(app,/renderer.draw\(physics.bodies,physics.strands\)/);assert.match(app,/physics.setDrain\(drain.step\(/);assert.match(app,/target.set\(name,name in PARAMS\?valueFor\(name/);assert.match(app,/RENDER_PARAMS/);
+ const html=await(await fetch(base+'index.html')).text();for(const id of ['stiffness','size','deformation','count','gravity','translucency','speed','freedom','slime','wobble','tuning-reset'])assert.match(html,new RegExp(`id="${id}"`));
+});
+test('blobs keep personal space: they bump and part instead of clumping into one still mass',()=>{
+ const w=new SoftBodyWorld({random:seeded(10)}),B=w.bodies,F=60*120;let clumped=0,longest=0,run=new Map(),still=B.map(()=>0),stillest=0;
+ for(let f=0;f<F;f++){w.advance(1/60);const c=B.map(b=>b.centroid),adj=B.map(()=>[]);
+  for(let i=0;i<B.length;i++)for(let j=i+1;j<B.length;j++){const k=i*16+j,t=Math.hypot(c[i].x-c[j].x,c[i].y-c[j].y)<B[i].reach+B[j].reach+2;
+   if(t){adj[i].push(j);adj[j].push(i);}run.set(k,t?(run.get(k)||0)+1:0);longest=Math.max(longest,run.get(k));}
+  const seen=new Set();let big=0;for(let i=0;i<B.length;i++){if(seen.has(i))continue;let n=0;const st=[i];seen.add(i);while(st.length){const x=st.pop();n++;for(const y of adj[x])if(!seen.has(y)){seen.add(y);st.push(y);}}big=Math.max(big,n);}
+  if(big>=3)clumped++;
+  B.forEach((b,i)=>{const v=b.velocity;still[i]=Math.hypot(v.x,v.y)*60<4?still[i]+1:0;stillest=Math.max(stillest,still[i]);});}
+ assert.ok(clumped/F<.15,`3+ blobs clumped ${(clumped/F*100).toFixed(0)}% of the time`);
+ assert.ok(longest/60<15,`longest contact ${(longest/60).toFixed(1)} s`);
+ assert.ok(stillest/60<5,`longest still spell ${(stillest/60).toFixed(1)} s`);
+});
+test('path targets move at a steady pace, so a body never parks on a short segment',()=>{
+ // It may ease briefly through a hairpin turn, but never crawls for seconds.
+ const w=new SoftBodyWorld({random:seeded(3),count:1}),b=w.bodies[0];let spell=0,longest=0;
+ for(let t=0;t<600;t+=.1){const p=b.pathPoint(t),q=b.pathPoint(t+.1);spell=Math.hypot(q.x-p.x,q.y-p.y)/.1<4?spell+.1:0;longest=Math.max(longest,spell);}
+ assert.ok(longest<2,`longest crawl ${longest.toFixed(1)} s`);
+});
+test('slime: touching bodies stick with strands that stretch and then snap; no slime, no strands',()=>{
+ const run=slime=>{const w=new SoftBodyWorld({random:seeded(10)});w.set('slime',slime);let most=0,longest=0,snapped=0,before=0,seen=new Set();
+  for(let f=0;f<60*120;f++){w.advance(1/60);const body=w.strands.filter(t=>!t.wall);most=Math.max(most,body.length);
+   for(const t of w.strands){seen.add(t);longest=Math.max(longest,t.stretch);}
+   snapped+=Math.max(0,before-w.strands.length);before=w.strands.length;}
+  return {w,most,longest,made:seen.size};};
+ const goo=run(1),plain=run(0);
+ assert.equal(plain.made,0,'plain jelly never sticks');
+ assert.ok(goo.made>20&&goo.most>=1,`strands formed (${goo.made})`);
+ assert.ok(goo.longest>8,`strands stretch before letting go (${goo.longest.toFixed(1)} px)`);
+ assert.ok(goo.w.strands.length<=goo.w.count*3,'strands snap rather than piling up');
+ assert.ok(finite(goo.w)&&inGlass(goo.w));
+});
+test('slime makes a held dent linger and ooze back; plain jelly springs back sooner',()=>{
+ const settle=slime=>{const w=new SoftBodyWorld({random:seeded(),count:1}),b=w.bodies[0];w.set('slime',slime);w.set('speed',0);w.set('wobble',0);
+  for(let f=0;f<60;f++)w.advance(1/60);
+  // Press one side flat for a second (like a long contact), then let go.
+  const c=b.centroid,wall=c.x+b.radius*.55;
+  for(let f=0;f<60;f++){for(const n of b.nodes)if(n.x>wall){n.x=wall;n.vx=Math.min(0,n.vx);}w.advance(1/60);}
+  let frames=0;while(roughness(b)>.08&&frames<600){w.advance(1/60);frames++;}return frames;};
+ const goo=settle(1),plain=settle(0);
+ assert.ok(goo>plain*1.5,`recovery ${plain} frames plain vs ${goo} slimy`);
+});
+test('shaking drains the slime in proportion to how long it lasts, and it seeps back after release',()=>{
+ const d=new ShakeDrain(),shake={held:true,intensity:.6};
+ for(let i=0;i<60*2;i++)d.step(1/60,shake);assert.ok(Math.abs(d.level-2/FIRM_SECONDS)<1e-6,'2 s of shaking = 2/10 drained');
+ for(let i=0;i<60*3;i++)d.step(1/60,shake);assert.ok(Math.abs(d.level-5/FIRM_SECONDS)<1e-6,'5 s = half');
+ for(let i=0;i<60*3;i++)d.step(1/60,{held:true,intensity:0});assert.ok(Math.abs(d.level-.5)<1e-6,'holding still neither drains nor recovers');
+ for(let i=0;i<60*20;i++)d.step(1/60,shake);assert.equal(d.level,1,'fully firm, never past it');
+ for(let i=0;i<60*RECOVER_SECONDS/2;i++)d.step(1/60,{held:false});assert.ok(Math.abs(d.level-.5)<1e-6,'half back after half the recovery time');
+ for(let i=0;i<60*RECOVER_SECONDS;i++)d.step(1/60,{held:false});assert.equal(d.level,0);
+ const w=new SoftBodyWorld({random:seeded()});w.set('slime',.8);w.setDrain(.25);assert.ok(Math.abs(w.sliminess-.6)<1e-9);
+ w.setDrain(1);assert.equal(w.sliminess,0);w.setDrain(NaN);assert.equal(w.sliminess,.8);
+});

@@ -1,0 +1,102 @@
+/* Harvey capstone website. The page is one 2240 × 1260 Figma frame, and
+   --u is one Figma pixel, so the whole frame scales as one piece. */
+
+:root {
+  --harvey-blue: #287cbf;
+  --harvey-sky: #b3d8e5;
+  --harvey-lime: #dbe8a3;
+  --harvey-leaf: #7aaf42;
+  --paper: #ffffff;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+/* 16:9 is the iMac's ratio: the frame fills the window in full screen on an
+   iMac and otherwise fits inside it without stretching or scrolling. */
+body {
+  display: grid;
+  place-items: center;
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+}
+
+img { display: block; }
+
+.hero {
+  width: min(100vw, 100vh * 2240 / 1260);
+  aspect-ratio: 2240 / 1260;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  container-type: inline-size;
+  --u: calc(100cqw / 2240);
+}
+
+.hero-half {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-lounge { background: var(--harvey-blue); color: var(--harvey-sky); }
+.hero-pocket { background: var(--harvey-lime); color: var(--harvey-leaf); }
+
+/* ---- The four lines in each half ---- */
+
+.line {
+  position: absolute;
+  left: calc(var(--u) * 566);
+  margin: 0;
+  transform: translateX(-50%);
+  font-size: calc(var(--u) * 56);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.line-1 { top: calc(var(--u) * 69); }
+.line-2 { top: calc(var(--u) * 136); }
+.line-3 { top: calc(var(--u) * 1058); }
+.line-4 { top: calc(var(--u) * 1125); }
+
+/* Figma centres the lime lines half a pixel or so apart; this keeps each one. */
+.hero-pocket .line-1 { left: calc(var(--u) * 561); }
+.hero-pocket .line-2 { left: calc(var(--u) * 561.5); }
+.hero-pocket .line-3 { left: calc(var(--u) * 560.5); }
+.hero-pocket .line-4 { left: calc(var(--u) * 560); }
+
+/* ---- Left: the room photo ---- */
+
+.hero-photo {
+  position: absolute;
+  left: calc(var(--u) * 342);
+  top: calc(var(--u) * 307);
+  width: calc(var(--u) * 448);
+  height: calc(var(--u) * 642);
+  object-fit: cover;
+  object-position: bottom;
+}
+
+/* ---- Right: the Harvey badge ---- */
+
+.hero-badge {
+  position: absolute;
+  /* Centre of Figma's 470.8 × 262.4 box at (327, 499) in this half. */
+  left: calc(var(--u) * 562.4);
+  top: calc(var(--u) * 630.2);
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-4.62deg);
+}
+
+.hero-badge img {
+  width: calc(var(--u) * 454.031);
+  height: auto;
+}

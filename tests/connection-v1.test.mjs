@@ -30,7 +30,7 @@ test('recovery survives long frame gaps and re-holding preserves the current app
   let state = beginHold(newState(), 100000); state.intensity = .8; state = endHold(state, 102000);
   assert.equal(beginHold(state, 117000).intensity, sampleState(state, 117000).intensity);
   const m = new Interaction(); m.adopt(state, 102000, 500); m.step(.016, 30500); assert.equal(m.intensity, 0);
-  assert.equal(attractionFor(1), 0); assert.equal(attractionFor(0), 1.3);
+  assert.equal(attractionFor(1), 0); assert.equal(attractionFor(0), .8);
 });
 test('pairing selects WSS for secure pages and validates room and population', () => {
   const loc = { protocol: 'https:', host: 'example.test', pathname: '/portable/', search: `?room=${roomA}` };
@@ -86,3 +86,28 @@ test('a portable waking mid-recovery gets relative elapsed and remaining seconds
   await next(ambient, m => m.type === 'snapshot');
   const reported = [...wss.clients].find(ws => ws.role === 'ambient'); assert.equal(reported.stats.fps, 59.8); assert.equal(reported.stats.width, 1024);
 });
+test('colour transfer: a portable sets its own population colour, broadcast to the room; ambients cannot', async t => {
+  let clock = 1000; const { server, wss } = createHarveyServer({ now: () => clock, tickMs: 10 });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); const base = `ws://127.0.0.1:${server.address().port}/socket`;
+  const clients = []; t.after(async () => { clients.forEach(ws => ws.terminate()); for (const c of wss.clients) c.terminate(); await new Promise(resolve => server.close(resolve)); });
+  async function connect(role, room = roomA, population = 1) { const ws = new WebSocket(`${base}?role=${role}&room=${room}&population=${population}`); clients.push(ws); assert.deepEqual((await next(ws, m => m.type === 'snapshot')).colours, [null, null, null]); return ws; }
+  const portable = await connect('portable'), ambient = await connect('ambient'), elsewhere = await connect('ambient', roomB), second = await connect('portable', roomA, 2);
+  const colour = (ws, value) => ws.send(JSON.stringify({ version: 1, type: 'colour', colour: value }));
+  colour(portable, '#9700e2'); assert.deepEqual((await next(ambient, m => m.colours?.[1])).colours, [null, '#9700E2', null]);
+  colour(second, '#E20000'); assert.deepEqual((await next(ambient, m => m.colours?.[2])).colours, [null, '#9700E2', '#E20000'], 'each portable only its own population');
+  assert.deepEqual((await next(elsewhere, m => m.type === 'snapshot')).colours, [null, null, null], 'other rooms untouched');
+  for (const bad of ['purple', '#12345', '#GGGGGG', 7]) { colour(portable, bad); assert.equal((await next(portable, m => m.type === 'error')).code, 'invalid-colour'); }
+  colour(ambient, '#000000'); assert.equal((await next(ambient, m => m.type === 'error')).code, 'invalid-message');
+  portable.send(JSON.stringify({ version: 1, type: 'hold' })); await next(portable, m => m.states?.[1].phase === 'holding');
+  colour(portable, '#00E2B7'); assert.equal((await next(ambient, m => m.colours?.[1] === '#00E2B7')).states[1].phase, 'holding', 'works mid-hold');
+  colour(portable, null); assert.equal((await next(ambient, m => m.type === 'snapshot' && m.colours[1] === null)).colours[2], '#E20000', 'null hands back the default');
+});
+test('a portable that reports its own recovery sets the duration, and it decays evenly', () => {
+  const held = { ...beginHold(newState(), 0), intensity: .6 };
+  const released = endHold(held, 2000, 300);
+  assert.equal(released.recoverySeconds, 300);
+  assert.ok(Math.abs(sampleState(released, 2000 + 150000).intensity - .3) < 1e-9);
+  assert.equal(sampleState(released, 2000 + 300000).phase, 'idle');
+  assert.equal(endHold(held, 2000).recoverySeconds, 30);
+});
+

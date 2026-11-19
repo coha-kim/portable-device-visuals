@@ -4,8 +4,30 @@
     {
       "name": "portable",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8038", "--bind", "127.0.0.1"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8038",
+        "--bind",
+        "127.0.0.1"
+      ],
       "port": 8038
+    },
+    {
+      "name": "bridge",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "connection-v1/server-v1.mjs"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "firmware/dashboard/server.py"
+      ],
+      "port": 8041
     }
   ]
 }

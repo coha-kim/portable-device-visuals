@@ -1,0 +1,5 @@
+/* Plain page: browser-default controls on white; only the round 480 × 480 display is styled. */
+html, body { background: #fff; }
+#display { width: 480px; height: 480px; border-radius: 50%; overflow: hidden; background: #594F47; }
+#scene { display: block; width: 480px; height: 480px; }
+[hidden] { display: none !important; }

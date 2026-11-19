@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvey Pull</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500&display=swap">
+<style>
+/* Layout: two halves. Left, your blobs on Harvey blue; right, the room on white. One canvas draws both. */
+:root { --panel: #3f7abb; --paper: #ffffff; --ink: #1f3a0b; --sans: "DM Sans", system-ui, sans-serif; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--paper); font-family: var(--sans); }
+#stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+.page { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.mine, .room { position: relative; touch-action: none; }
+.mine.over { cursor: grab; }
+.holding .mine { cursor: grabbing; }
+
+/* The status bubble: glossy green, its tail resting on your top blob. */
+.bubble { position: fixed; left: 0; top: 0; width: min(27vw, 46vh); aspect-ratio: 800 / 236; z-index: 2; pointer-events: none;
+  container-type: inline-size; will-change: transform; filter: drop-shadow(0 .4vw .6vw rgba(10, 30, 60, .25)); }
+.bubble .shape { width: 100%; height: 100%; transition: transform .45s cubic-bezier(.3, 1.5, .5, 1); transform-origin: 99% 90%; }
+.bubble svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.bubble p { position: absolute; left: 5%; right: 13%; top: 6%; bottom: 8%; margin: 0; display: grid; place-items: center; text-align: center;
+  font-size: 7cqi; font-weight: 500; line-height: 1.1; color: var(--ink); text-shadow: 0 1px 0 rgba(255, 255, 255, .45); text-wrap: balance; }
+.bubble.pop .shape { animation: pop .5s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes pop { 0% { transform: scale(.9, .84); } 55% { transform: scale(1.03, 1.05); } 100% { transform: none; } }
+.no-webgl .mine::after { content: "This page needs WebGL2."; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; }
+@media (max-aspect-ratio: 1/1) { .page { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } .bubble { width: min(46vw, 27vh); } }
+@media (prefers-reduced-motion: reduce) { .bubble.pop .shape { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<main class="page">
+  <section class="mine" role="application" aria-label="Your blobs. Grab one and pull it away to separate."></section>
+  <section class="room" aria-label="The room: everyone's populations together."></section>
+</main>
+<div class="bubble" aria-live="polite">
+  <div class="shape">
+    <svg viewBox="0 0 800 236" aria-hidden="true">
+      <defs>
+        <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b6e27f"/><stop offset=".42" stop-color="#93d044"/><stop offset=".78" stop-color="#9bd84b"/><stop offset="1" stop-color="#b6ea62"/>
+        </linearGradient>
+        <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff" stop-opacity=".92"/><stop offset=".55" stop-color="#fff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity=".12"/>
+        </linearGradient>
+        <radialGradient id="glow" cx=".5" cy="1" r=".6">
+          <stop offset="0" stop-color="#d8f59a" stop-opacity=".75"/><stop offset="1" stop-color="#d8f59a" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <g transform="translate(800 0) scale(-1 1)">
+        <path d="M175 10H685A105 105 0 0 1 685 220H140Q70 220 2 214Q58 196 78 150A105 105 0 0 1 175 10Z" fill="url(#body)" stroke="#7fb83a" stroke-width="2.5"/>
+        <path d="M175 10H685A105 105 0 0 1 685 220H140Q70 220 2 214Q58 196 78 150A105 105 0 0 1 175 10Z" fill="url(#glow)"/>
+        <rect x="92" y="22" width="580" height="84" rx="42" fill="url(#gloss)"/>
+      </g>
+    </svg>
+    <p id="said"></p>
+  </div>
+</div>
+<script type="module" src="pull.mjs?v=1"></script>
+</body>
+</html>

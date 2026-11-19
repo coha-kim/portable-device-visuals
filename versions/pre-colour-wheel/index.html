@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Portable Device Visuals</title>
+  <link rel="stylesheet" href="style.css?softbody-25">
+</head>
+<body>
+  <h1>Palm device</h1>
+  <p>2.1″ round display · 480 × 480 pixels · 53.28 mm across</p>
+  <div id="display" aria-label="Round display preview, 480 by 480 pixels"><canvas id="scene" width="480" height="480" aria-hidden="true"></canvas></div>
+  <fieldset id="laptop-test">
+    <legend>Interaction (shaking lowers elasticity in proportion to how long it lasts; also sent to ambient)</legend>
+    <p><button id="hold" type="button" aria-pressed="false">Hold</button> <button id="simulate" type="button" aria-pressed="false">Hold + shake test</button> <button id="motion-setup" type="button">Use phone motion</button></p>
+    <p><label for="shake-strength">Test strength</label> <input id="shake-strength" type="range" min="0.1" max="1" step="0.05" value="0.65"></p>
+    <p id="motion-status">Hold the button, or use the shake test.</p>
+  </fieldset>
+
+  <fieldset id="real-size">
+    <legend>Display size</legend>
+    <p><label><input id="real-size-toggle" type="checkbox"> Real size (53.28 mm diameter)</label> <output id="real-size-info"></output></p>
+    <div id="calibration" hidden>
+      <p>Calibrate once per screen: hold a bank card (85.60 mm wide) against the screen and drag the slider until the outline below matches its width. Zoom must stay at 100%.</p>
+      <p><label for="px-per-mm">Screen calibration</label> <input id="px-per-mm" type="range" min="2.5" max="8" step="0.005"> <output for="px-per-mm"></output></p>
+      <div id="calibration-card" aria-label="Bank card outline for calibration"></div>
+    </div>
+  </fieldset>
+  <p id="metrics" aria-live="off">50 soft bodies</p>
+
+  <fieldset id="tuning">
+    <legend>Jelly</legend>
+    <p><label for="stiffness">Shape stiffness</label> <input id="stiffness" data-param="stiffness" type="range" min="0" max="1" step="any"> <output for="stiffness"></output></p>
+    <p><label for="damping">Wobble damping</label> <input id="damping" data-param="damping" type="range" min="0" max="1" step="any"> <output for="damping"></output></p>
+    <p><label for="elasticity">Elasticity (shaking lowers it)</label> <input id="elasticity" data-param="elasticity" type="range" min="0" max="1" step="any"> <output for="elasticity"></output></p>
+    <p><label for="friction">Friction (on contact)</label> <input id="friction" data-param="friction" type="range" min="0" max="1" step="any"> <output for="friction"></output></p>
+    <p><label for="gravity">Gravity strength</label> <input id="gravity" data-param="gravity" type="range" min="0" max="1" step="any"> <output for="gravity"></output></p>
+    <p><label for="maxSpeed">Max speed</label> <input id="maxSpeed" data-param="maxSpeed" type="range" min="0" max="1" step="any"> <output for="maxSpeed"></output></p>
+    <p><label for="drag">Drag</label> <input id="drag" data-param="drag" type="range" min="0" max="1" step="any"> <output for="drag"></output></p>
+    <p><label for="push">Push strength (press)</label> <input id="push" data-param="push" type="range" min="0" max="1" step="any"> <output for="push"></output></p>
+    <p><label for="pushRadius">Push reach</label> <input id="pushRadius" data-param="pushRadius" type="range" min="0" max="1" step="any"> <output for="pushRadius"></output></p>
+    <p><label for="size">Size of blobs</label> <input id="size" data-param="size" type="range" min="0" max="1" step="any"> <output for="size"></output></p>
+    <p><label for="count">Number of blobs</label> <input id="count" data-param="count" type="range" min="0" max="1" step="any"> <output for="count"></output></p>
+    <p><label for="hue">Colour</label> <input id="hue" data-param="hue" type="range" min="0" max="1" step="any"> <output for="hue"></output></p>
+    <p><button id="tuning-reset" type="button">Reset</button></p>
+  </fieldset>
+
+  <fieldset id="tilt">
+    <legend>Gravity and push (stands in for the motion sensor until the board arrives)</legend>
+    <p>Press on the round display: that point is the origin of the force. Gravity points away from it, so the opposite side becomes the ground; it stays after you let go (stronger the further from the centre you press, up to 0.6 g at the rim). The press also pushes the blobs away: close ones fly off and bounce off the ground, distant ones barely move. Drag to stir. Press near the centre, or use Level, to level the plate.</p>
+    <p><button id="tilt-level" type="button">Level</button> <span id="tilt-output" aria-live="off">gravity 0.00 g (level: blobs settle)</span></p>
+  </fieldset>
+
+  <fieldset id="colour-transfer">
+    <legend>Colour transfer (tap near the ambient display; simulated until the hardware arrives)</legend>
+    <p><button id="tap-ambient" type="button">Tap ambient: send colour</button></p>
+    <p id="tap-status" aria-live="polite">Pick a colour above, then tap.</p>
+  </fieldset>
+
+  <section id="welcome" aria-label="Motion setup" hidden>
+    <h2>Hold, then shake.</h2>
+    <p>Hold while shaking: the longer you shake, the less the blobs bounce and the slower they move. Interaction is also sent to the ambient display.</p>
+    <button id="enable" type="button">Enable motion</button> <button id="view" type="button">Back to preview</button>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+  <script type="module" src="app.js?softbody-25"></script>
+</body>
+</html>

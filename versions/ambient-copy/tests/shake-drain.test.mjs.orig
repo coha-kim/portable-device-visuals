@@ -1,0 +1,19 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {ShakeDrain,FIRM_SECONDS,RECOVER_SECONDS} from '../shake-drain.mjs';
+test('shaking drains merging in proportion to how long it lasts, and it seeps back after release',()=>{
+ const d=new ShakeDrain(),shake={held:true,intensity:.6},close=(a,b)=>Math.abs(a-b)<1e-6;
+ for(let i=0;i<60*2;i++)d.step(1/60,shake);assert.ok(close(d.level,2/FIRM_SECONDS),'2 s of shaking = 2/10 drained');
+ for(let i=0;i<60*3;i++)d.step(1/60,shake);assert.ok(close(d.level,.5),'5 s = half');
+ for(let i=0;i<60*3;i++)d.step(1/60,{held:true,intensity:0});assert.ok(close(d.level,.5),'holding still neither drains nor recovers');
+ for(let i=0;i<60*20;i++)d.step(1/60,shake);assert.equal(d.level,1,'no merging after 10 s, never past it');
+ for(let i=0;i<60*RECOVER_SECONDS/2;i++)d.step(1/60,{held:false});assert.ok(close(d.level,.5),'half back after half the recovery time');
+ for(let i=0;i<60*RECOVER_SECONDS;i++)d.step(1/60,{held:false});assert.equal(d.level,0);
+ d.step(NaN,shake);assert.equal(d.level,0);
+});
+test('the app applies slider × (1 − drain) to merging every frame',async()=>{
+ const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/applyMerging\(merging\*\(1-drain\.step\(dt,\{held:interaction\.held,intensity:interaction\.intensity\}\)\)\);/);
+ assert.match(app,/function setMerging\(m\)\{merging=m;applyMerging\(m\*\(1-drain\.level\)\);\}/);
+});

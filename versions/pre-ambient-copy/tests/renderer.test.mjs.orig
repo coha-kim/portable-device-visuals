@@ -1,0 +1,69 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {JellyRenderer,BACKGROUND,FILL,RENDER_PARAMS,BANDS,EDGE_PROFILE,STRAND_EDGE,STRAND_WIDTH} from '../renderer.mjs';
+import {SoftBodyWorld} from '../softbody.mjs';
+function make(options={createBuffer:()=>null}){
+ const calls=[],gradients=[];
+ const ctx={globalAlpha:1,fillStyle:'',strokeStyle:'',lineWidth:1,
+  save(){calls.push(['save']);},restore(){calls.push(['restore']);},beginPath(){calls.push(['beginPath']);},closePath(){},
+  arc(...a){calls.push(['arc',...a]);},clip(){calls.push(['clip']);},ellipse(){calls.push(['ellipse']);},
+  moveTo(...a){calls.push(['moveTo',...a]);},quadraticCurveTo(...a){calls.push(['quad',...a]);},
+  lineTo(...a){calls.push(['lineTo',...a]);},stroke(){calls.push(['stroke',this.lineWidth,this.globalAlpha]);},
+  fillRect(...a){calls.push(['fillRect',this.fillStyle,this.globalAlpha,...a]);},fill(){calls.push(['fill',this.globalAlpha]);},drawImage(...a){calls.push(['drawImage',...a]);},
+  createRadialGradient(...a){const g={a,stops:[],addColorStop(o,c){this.stops.push([o,c]);}};gradients.push(g);return g;}};
+ const canvas={getContext(){return ctx;}};return {renderer:new JellyRenderer(canvas,options),canvas,ctx,calls,gradients};
+}
+test('native 480 × 480 round canvas, #594F47 background, solid ambient teal #00E2B7 with no highlight',()=>{
+ assert.equal(FILL,'#00E2B7');
+ const r=make(),w=new SoftBodyWorld({random:Math.random});r.renderer.draw(w.bodies);
+ assert.equal(r.canvas.width,480);assert.equal(r.canvas.height,480);
+ assert.deepEqual(r.calls[0],['fillRect',BACKGROUND,1,0,0,480,480]);
+ assert.ok(r.calls.some(c=>c[0]==='arc'&&c[1]===240&&c[2]===240&&c[3]===240)&&r.calls.some(c=>c[0]==='clip'));
+ // Solid infill: no gradient, no outline, no gloss.
+ assert.equal(r.gradients.length,0);assert.equal(r.ctx.fillStyle,FILL);
+ assert.equal(r.calls.filter(c=>c[0]==='stroke'||c[0]==='ellipse').length,0);
+});
+test('each body is a solid core inside a soft border of non-overlapping bands that fade in toward it',()=>{
+ const r=make(),w=new SoftBodyWorld({random:Math.random,count:1});r.renderer.draw(w.bodies);
+ assert.equal(r.calls.filter(c=>c[0]==='quad').length,w.bodies[0].nodes.length*(2*BANDS+1));
+ const alphas=r.calls.filter(c=>c[0]==='fill').map(c=>c[1]);
+ assert.deepEqual(alphas,[...EDGE_PROFILE,1]);
+ for(let i=1;i<alphas.length;i++)assert.ok(alphas[i]>alphas[i-1],'border fades in toward the body');
+ assert.ok(EDGE_PROFILE[0]<.05,'outermost band is nearly transparent');
+ const {x,y}=w.bodies[0].centroid,starts=r.calls.filter(c=>c[0]==='moveTo').map(c=>Math.hypot(c[1]-x,c[2]-y));
+ for(let i=1;i<starts.length;i++)assert.ok(starts[i]<=starts[i-1]+1e-9,'bands step inward');
+ assert.ok(starts[0]>starts.at(-1),'border extends outside the core');
+});
+test('every frame repaints the whole background and restores alpha, so nothing trails',()=>{
+ const r=make();r.renderer.draw([]);r.renderer.draw([]);
+ assert.equal(r.calls.filter(c=>c[0]==='fillRect').length,2);assert.equal(r.ctx.globalAlpha,1);
+});
+test('translucency fades each body fill; default is opaque and the setting is clamped',()=>{
+ const fills=t=>{const r=make(),w=new SoftBodyWorld({random:Math.random,count:1});if(t!==undefined)r.renderer.set('translucency',t);r.renderer.draw(w.bodies);
+  return {r,alphas:r.calls.filter(c=>c[0]==='fill').map(c=>c[1]).slice(BANDS)};};
+ const opaque=fills(),clear=fills(.6),over=fills(5);
+ assert.equal(opaque.r.renderer.translucency,RENDER_PARAMS.translucency.default);assert.equal(opaque.alphas[0],1);
+ assert.ok(Math.abs(clear.alphas[0]-.4)<1e-9);
+ assert.equal(over.r.renderer.translucency,RENDER_PARAMS.translucency.max);assert.ok(over.alphas[0]>0,'never fully invisible');
+ assert.equal(clear.r.ctx.globalAlpha,1);
+});
+test('in the browser the scene is drawn at half resolution and smoothed up to 480 × 480',()=>{
+ const inner=make();const buffer={width:0,height:0,getContext:()=>inner.ctx};
+ const r=make({createBuffer:()=>buffer});const w=new SoftBodyWorld({random:Math.random,count:1});r.renderer.draw(w.bodies);
+ assert.equal(buffer.width,240);assert.equal(buffer.height,240);
+ assert.deepEqual(inner.calls[0],['fillRect',BACKGROUND,1,0,0,240,240]);
+ assert.ok(inner.calls.some(c=>c[0]==='arc'&&c[1]===120&&c[2]===120&&c[3]===120));
+ assert.deepEqual(r.calls.find(c=>c[0]==='drawImage'),['drawImage',buffer,0,0,480,480]);
+ assert.equal(r.ctx.imageSmoothingEnabled,true);
+});
+test('slime strands are soft round strokes behind the bodies that thin as they stretch',()=>{
+ const r=make(),w=new SoftBodyWorld({random:Math.random,count:2}),[A,B]=w.bodies;
+ const strands=[{a:A.nodes[0],b:B.nodes[8],stretch:0,reach:40},{a:A.nodes[1],b:{x:470,y:240},stretch:30,reach:40,wall:true}];
+ r.renderer.draw(w.bodies,strands);
+ const strokes=r.calls.filter(c=>c[0]==='stroke');assert.equal(strokes.length,strands.length*STRAND_EDGE.length);
+ assert.deepEqual(strokes.slice(0,STRAND_EDGE.length).map(c=>c[2]),STRAND_EDGE.map(([,a])=>a));
+ assert.equal(strokes[STRAND_EDGE.length-1][1],STRAND_WIDTH,'unstretched core is full width');
+ assert.ok(strokes.at(-1)[1]<STRAND_WIDTH*.5,'stretched strand is thinner');
+ assert.ok(r.calls.findIndex(c=>c[0]==='stroke')<r.calls.findIndex(c=>c[0]==='quad'),'strands drawn before bodies');
+ assert.equal(r.ctx.strokeStyle,FILL);
+});

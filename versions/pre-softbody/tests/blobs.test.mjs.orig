@@ -1,0 +1,77 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {once} from 'node:events';
+import {OrbPhysics,ORB_COUNT,BASE_ATTRACTION,CENTER,DISPLAY_RADIUS,FUSE_RATIO} from '../blobs.mjs';
+import {PalmInteraction,ATTRACTION_FULL_SECONDS,MIN_RADIUS_SCALE} from '../interaction-v15.mjs';
+import {createHarveyServer} from '../connection-v1/server-v1.mjs';
+const seeded=(s=11)=>()=>((s=(Math.imul(s,1664525)+1013904223)>>>0)/4294967296);
+const contained=p=>p.orbs.every(o=>[o.x,o.y].every(Number.isFinite)&&Math.hypot(o.x-CENTER,o.y-CENTER)+p.radius(o)<=DISPLAY_RADIUS+1e-6);
+const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+test('hold duration lowers attraction and radius; shake strength alone dulls the colour',()=>{
+ const still=new PalmInteraction(),shaken=new PalmInteraction();
+ assert.equal(still.attraction,BASE_ATTRACTION);assert.equal(still.radiusScale,1);assert.equal(still.dullness,0);
+ still.hold(true,0);shaken.hold(true,0);
+ for(let t=10;t<=4000;t+=10){shaken.sampleVector(16,0,0,t);still.step(.01,t);shaken.step(.01,t);}
+ assert.equal(still.attraction,shaken.attraction,'attraction depends on duration, not shake');
+ assert.equal(still.radiusScale,shaken.radiusScale,'size depends on duration, not shake');
+ assert.ok(Math.abs(still.attraction-BASE_ATTRACTION*(1-4/ATTRACTION_FULL_SECONDS))<1e-9);
+ assert.equal(still.dullness,0);assert.equal(shaken.dullness,1);
+ shaken.step(.01,ATTRACTION_FULL_SECONDS*1000);assert.equal(shaken.attraction,0);assert.equal(shaken.radiusScale,MIN_RADIUS_SCALE);
+ shaken.hold(false,9000);const a=shaken.attraction,r=shaken.radiusScale,d=shaken.dullness;
+ shaken.step(.05,20000);assert.ok(shaken.attraction>a&&shaken.radiusScale>r&&shaken.dullness<d);
+ shaken.step(.05,9000+shaken.state.recoverySeconds*1000);
+ assert.equal(shaken.attraction,BASE_ATTRACTION);assert.equal(shaken.radiusScale,1);assert.equal(shaken.dullness,0);
+});
+test('attraction never changes wander speed or direction: separated orbs move identically',()=>{
+ const runs=[0,BASE_ATTRACTION,4].map(attraction=>{
+  const p=new OrbPhysics({random:seeded(),count:2});
+  Object.assign(p.orbs[0],{x:150,y:240});Object.assign(p.orbs[1],{x:330,y:240});
+  const path=[];for(let f=0;f<20;f++){p.advance(1/60,{attraction,radiusScale:.4});path.push(p.orbs.map(o=>[o.x,o.y,o.autoX,o.autoY]));}
+  assert.equal(p.stats.contacts,0);return path;
+ });
+ assert.deepEqual(runs[0],runs[1]);assert.deepEqual(runs[1],runs[2]);
+});
+test('wander speed stays in the ambient range whatever the attraction',()=>{
+ for(const attraction of [0,BASE_ATTRACTION,4]){
+  const p=new OrbPhysics({random:seeded()});
+  for(let f=0;f<600;f++){p.advance(1/60,{attraction});for(const o of p.orbs){const v=Math.hypot(o.autoX,o.autoY)*60;assert.ok(v<=.9*.8*1.1*60+1e-6,`${v}`);}}
+ }
+});
+test('touching orbs are pulled together with attraction; zero attraction bounces them apart',()=>{
+ const gap=attraction=>{
+  const p=new OrbPhysics({random:seeded(),count:2});
+  Object.assign(p.orbs[0],{x:200,y:240});Object.assign(p.orbs[1],{x:280,y:240});
+  let closest=Infinity;for(let f=0;f<60;f++){p.advance(1/60,{attraction,radiusScale:.6});closest=Math.min(closest,distance(...p.orbs));}
+  return {p,closest};
+ };
+ const merged=gap(4),bounced=gap(0);
+ assert.ok(merged.closest<bounced.closest);assert.ok(merged.p.stats.contacts>0);
+ const [a,b]=bounced.p.orbs;assert.ok(distance(a,b)>=(bounced.p.radius(a)+bounced.p.radius(b))*1.02-1e-6);
+ assert.ok(distance(a,b)>(bounced.p.radius(a)+bounced.p.radius(b))*FUSE_RATIO,'bounced orbs stay visually separate');
+});
+test('fully interacted (zero attraction, smallest size) shows more separate blobs than idle',()=>{
+ const pieces=(attraction,radiusScale)=>{const p=new OrbPhysics({random:seeded()});let sum=0,n=0;
+  for(let f=0;f<60*60;f++){p.advance(1/60,{attraction,radiusScale});if(f%60===0){sum+=p.pieces();n++;}}
+  assert.ok(contained(p));return sum/n;};
+ const idle=pieces(BASE_ATTRACTION,1),interacted=pieces(0,MIN_RADIUS_SCALE);
+ assert.equal(interacted,ORB_COUNT);assert.ok(interacted>idle+1,JSON.stringify({idle,interacted}));
+});
+test('fixed step agrees across 30/60/120 fps; six minutes stay finite and inside the glass',()=>{
+ const out=[30,60,120].map(fps=>{const p=new OrbPhysics({random:seeded()});for(let f=0;f<fps*5;f++)p.advance(1/fps,{attraction:.5,radiusScale:.8});return p.orbs.map(o=>[o.x,o.y]);});
+ for(const o of out.slice(1))o.forEach((v,i)=>assert.ok(Math.abs(v[0]-out[0][i][0])<1e-6&&Math.abs(v[1]-out[0][i][1])<1e-6));
+ const p=new OrbPhysics({random:seeded()}),m=new PalmInteraction();let now=0;
+ for(let f=0;f<60*360;f++){
+  now+=1000/60;if(f===60*30)m.hold(true,now);if(f===60*150)m.hold(false,now);
+  if(m.held)m.sampleVector(Math.sin(f)*20,Math.cos(f*.7)*20,0,now);
+  m.step(1/60,now);p.advance(1/60,{attraction:m.attraction,radiusScale:m.radiusScale});
+  assert.ok(contained(p));
+ }
+});
+test('paired preview serves the orb entry points',async t=>{
+ const {server}=createHarveyServer();server.listen(0,'127.0.0.1');await once(server,'listening');t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base=`http://127.0.0.1:${server.address().port}/portable/`;
+ for(const path of ['blobs.mjs','interaction-v15.mjs','renderer.mjs'])assert.equal((await fetch(base+path)).status,200);
+ const app=await(await fetch(base+'app.js')).text();
+ assert.match(app,/OrbPhysics/);assert.match(app,/renderer.draw\(physics.blobs,interaction.dullness\)/);
+ assert.match(app,/attraction:interaction.attraction,radiusScale:interaction.radiusScale/);
+});

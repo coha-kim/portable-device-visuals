@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvey X-ray</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: the Lounge fills the screen; the Pocket is a round lens that rides on the pointer. */
+:root { --paper: #ffffff; --ink: #2b2b2a; --muted: #8a8987; --blue: #3f7abb; --shell: #eceae6; --shell-dark: #c9c6c0;
+  --sans: "DM Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace; --glass-size: min(34vmin, 380px); }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--paper); color: var(--ink); font-family: var(--sans); cursor: none; touch-action: none; user-select: none; }
+#lounge { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+.tag { position: fixed; font: 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tag.room { left: 24px; top: 22px; }
+.tag.room b { font-weight: 400; color: var(--blue); }
+.hint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); margin: 0; font-size: 15px; color: var(--ink); text-align: center; transition: opacity .6s; white-space: nowrap; }
+.hint.gone { opacity: 0; }
+
+/* The Pocket: a soft shell around round glass. Over your blobs the glass x-rays into the Pocket's screen; elsewhere it stays clear. */
+.lens { position: fixed; left: 0; top: 0; z-index: 2; pointer-events: none; perspective: 900px; will-change: transform; }
+.device { position: absolute; left: 0; top: 0; translate: -50% -50%; --xray: 0; --deep: 0; --deep-angle: 180deg; transition: scale .2s; }
+.holding .device { scale: .97; }
+.shell { padding: calc(var(--glass-size) * .085); border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #fbfaf8 0%, var(--shell) 45%, var(--shell-dark) 100%);
+  box-shadow: 0 18px 40px rgba(20, 30, 50, .22), 0 3px 8px rgba(20, 30, 50, .18), inset 0 2px 3px rgba(255, 255, 255, .9), inset 0 -4px 10px rgba(0, 0, 0, .12); }
+.glass { position: relative; width: var(--glass-size); height: var(--glass-size); border-radius: 50%; overflow: hidden;
+  box-shadow: inset 0 3px 8px rgba(0, 0, 0, .35), 0 0 0 1px rgba(0, 0, 0, .08); background: rgba(255, 255, 255, .05); }
+/* The x-ray opens like an iris as the lens settles over your blobs. */
+#pocket { position: absolute; inset: 0; width: 100%; height: 100%;
+  -webkit-mask-image: radial-gradient(circle, #000 calc(var(--xray) * 71%), transparent calc(var(--xray) * 71% + 1.5%));
+  mask-image: radial-gradient(circle, #000 calc(var(--xray) * 71%), transparent calc(var(--xray) * 71% + 1.5%)); }
+.glass::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(ellipse 70% 40% at 38% 18%, rgba(255, 255, 255, .28), transparent 70%),
+              linear-gradient(var(--deep-angle), transparent 35%, rgba(0, 0, 0, calc(.35 * var(--deep))) 100%); }
+.lens .label { position: absolute; left: 0; top: calc(var(--glass-size) * .5 + var(--glass-size) * .085 + 14px); translate: -50% 0;
+  font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.lens.nope .device { animation: nope .4s; }
+@keyframes nope { 20% { translate: calc(-50% - 8px) -50%; } 45% { translate: calc(-50% + 7px) -50%; } 70% { translate: calc(-50% - 4px) -50%; } 100% { translate: -50% -50%; } }
+
+/* The signal leaving the Pocket on release. */
+.pulse { position: fixed; z-index: 1; width: var(--glass-size); height: var(--glass-size); translate: -50% -50%; border-radius: 50%;
+  border: 3px solid var(--blue); opacity: 0; pointer-events: none; }
+.pulse.go { animation: send .9s cubic-bezier(.2, .7, .3, 1); }
+@keyframes send { 0% { opacity: .9; scale: 1; } 100% { opacity: 0; scale: 2.6; } }
+.no-webgl::after { content: "This page needs WebGL2."; position: fixed; inset: 0; display: grid; place-items: center; }
+@media (prefers-reduced-motion: reduce) { .pulse.go { animation-duration: .01s; } .lens.nope .device { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="lounge" aria-label="Harvey Lounge: three populations of blobs, yours in blue."></canvas>
+<p class="tag room">Harvey Lounge · <b>yours in blue</b></p>
+<p class="hint">Find your blue blobs with the Pocket. Hold and drag to tip it.</p>
+<div class="pulse"></div>
+<div class="lens" aria-hidden="true">
+  <div class="device"><div class="shell"><div class="glass"><canvas id="pocket"></canvas></div></div></div>
+  <span class="label">Harvey Pocket</span>
+</div>
+<script type="module" src="xray.mjs?v=1"></script>
+</body>
+</html>
